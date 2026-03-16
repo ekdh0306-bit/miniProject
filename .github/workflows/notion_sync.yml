@@ -1,20 +1,31 @@
-name: Notion Sync
-on: [push] # 코드가 Push 될 때마다 실행
+name: Notion Sync Bot
+
+on:
+  push:
+    branches: [ "main" ]
 
 jobs:
-  build:
+  run-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.9'
+
       - name: Install dependencies
-        run: pip install requests python-dotenv
-      - name: Run Update Script
-        env: # 깃허브 Secrets에서 값을 가져와 환경변수로 설정
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir notion-client PyGithub
+
+      - name: Run script
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          NOTION_STATUS_DB_ID: ${{ secrets.NOTION_STATUS_DB_ID }}
+          REPO_NAME: ${{ secrets.REPO_NAME }}
         run: python app.py
