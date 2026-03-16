@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../static/mainstyle.css">
+    </head>
+<body>
+    <div class="hero-container">
+        <div class="hero-overlay"></div>
+
+        <div class="hero-content">
+            <div class="register-card">
+                <h2 class="register-title"><a href="/" style="text-decoration: none; color: inherit;">LOGIN</a></h2>
+
+                <form action="/login" method="POST" class="register-form">
+                    <div class="input-group">
+                        <label for="uid">아이디</label>
+                        <input type="text" id="uid" name="uid" placeholder="ID를 입력하세요" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="password">비밀번호</label>
+                        <input type="password" id="password" name="password" placeholder="Password를 입력하세요" required>
+                    </div>
+
+                    <button type="submit" class="hero-btn register-submit">로그인하기</button>
+                </form>
+
+                <p class="login-link">계정이 없으신가요? <a href="/join">회원가입</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
