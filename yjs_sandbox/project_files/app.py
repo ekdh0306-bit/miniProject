@@ -15,7 +15,7 @@ def join():
         return render_template('join.html')
     uid = request.form.get('uid')
     password = request.form.get('password')
-    name = request.form.get('name')
+    name = request.form.get('username')
     email= request.form.get('email')
 
     if MemberService.is_duplicate_uid(uid):
@@ -27,18 +27,19 @@ def join():
     return "가입 도중 오류가 발생하였습니다."
 
 @app.route("/login", methods=['GET', 'POST'])
-def check_login():
+def login():
     if request.method == 'GET':
         return render_template('login.html')
     uid = request.form['uid']
-    upw = request.form['upw']
+    upw = request.form['password']
 
-    user = MemberService.check_login(uid,upw)
+
+    user = MemberService.login(uid,upw)
 
     if user:
         session['user_id'] = user['id']
         session['user_name'] = user['name']
-        session['email'] = user['email']
+        session['user_email'] = user['email']
         session['user_uid'] = user['uid']
         session['user_role'] = user['role']
         return redirect(url_for('index'))
@@ -46,7 +47,7 @@ def check_login():
         return "<script>alert('아이디 또는 비밀번호가 틀렸습니다.');history.back();</script>"
 
 @app.route('/logout')
-def check_logout():
+def logout():
     session.clear()
     return redirect(url_for('index'))
 
@@ -60,11 +61,13 @@ def member_edit():
         return render_template('member_edit.html', user=user_info)
 
     # POST 요청 처리 (수정 실행)
-    new_name = request.form.get('name')
-    new_pw = request.form.get('password')
+    new_uid = request.form.get('new_uid')
+    new_email = request.form.get('email')
+    new_pw = request.form.get('pw')
+    print(f"session user_id: {session['user_id']}")
+    print(f"session user_id type: {type(session['user_id'])}")
 
-    if MemberService.update_member(session['user_id'], new_name, new_pw):
-        session['user_name'] = new_name
+    if MemberService.update_member(session['user_id'], new_uid, new_email, new_pw):
         return "<script>alert('정보 수정이 완료되었습니다.'); location.href = '/mypage';</script>"
     return "수정 도중 오류가 발생했습니다."
 
@@ -78,9 +81,21 @@ def mypage():
 
     return render_template('mypage.html', user=user_info)
 
+# 회원 삭제 로직
+@app.route('/member/delete/<int:user_id>', methods=['GET'])
+def member_delete(user_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    if MemberService.delete_member(session['user_id']):
+        session.clear()
+        return "<script>alert('회원 탈퇴가 완료되었습니다.'); location.href='/'</script>"
+    return "탈퇴 처리 중 오류 발생"
 
 @app.route("/") # url 생성용 코드
 def index():
     return render_template('main.html')
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5500, debug=True)
+
+    app.run(host='0.0.0.0', port=5350, debug=True)
