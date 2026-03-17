@@ -8,6 +8,7 @@
     <link rel="stylesheet" as="style" crossorigin
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"/>
     <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 <div class="top-nav">
@@ -66,26 +67,6 @@
                 </div>
             </div>
 
-            <div class="result-card" style="height: auto; min-height: 200px;">
-                <h3 class="result-header" style="font-size: 1.5rem; color: #ffffff; margin-bottom: 15px;">📝 내가 쓴 글
-                    목록</h3>
-                <div class="post-list">
-                    {% if user_posts %}
-                    <table style="width: 100%; border-collapse: collapse; color: white;">
-                        {% for post in user_posts %}
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-                            <td style="padding: 12px 5px;">{{ post.title }}</td>
-                            <td style="padding: 12px 5px; text-align: right; font-size: 0.8rem; color: rgba(255,255,255,0.5);">
-                                {{ post.created_at }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </table>
-                    {% else %}
-                    <p style="color: rgba(255,255,255,0.5); text-align: center;">작성한 글이 없습니다.</p>
-                    {% endif %}
-                </div>
-            </div>
 
         </div>
     </div>

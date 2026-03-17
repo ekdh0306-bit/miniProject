@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/mainstyle.css">
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body class="{% if not session.get('user_name') %}no-scroll{% endif %}">
 <div class="hero-container">
@@ -15,20 +16,24 @@
     <div class="hero-content">
         <div class="button-group">
             <span class="nav-title">열린마당</span>
-            <a href="/introduce" class="hero-btn">사이트 소개</a>
-            {% if session.get('user_name') %}
-            <a href="{{ url_for('mypage') }}" class="hero-btn">
-                {{ session['user_name'] }}님
-            </a>
-            <a href="{{ url_for('logout') }}" class="hero-btn"
-               style="border-color: rgba(255,255,255,0.3); font-size: 0.8rem;">
-                로그아웃
-            </a>
-            {% else %}
-            <a href="{{ url_for('login') }}" class="hero-btn">
-                로그인
-            </a>
-            {% endif %}
+<a href="/introduce" class="hero-btn">사이트 소개</a>
+
+{% if session.get('user_name') %}
+    <a href="{{ url_for('mypage') }}" class="hero-btn">마이페이지</a>
+
+    <a href="{{ url_for('mypage') }}" class="hero-btn">
+        {{ session['user_name'] }}님
+    </a>
+
+    <a href="{{ url_for('logout') }}" class="hero-btn"
+       style="border-color: rgba(255,255,255,0.3);">
+        로그아웃
+    </a>
+{% else %}
+    <a href="{{ url_for('login') }}" class="hero-btn">
+        로그인
+    </a>
+{% endif %}
             <a href="/join" class="hero-btn btn-register">회원가입</a>
             <a href="/analysis" class="hero-btn btn-analysis">분석 게시판</a>
         </div>

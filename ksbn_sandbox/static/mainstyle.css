@@ -509,3 +509,50 @@ body, p, a, div, span, button {
     padding-top: 0 !important;          /* 상단 여백 제거 */
     height: 100vh;
 }
+
+/* 모바일 대응 (768px 이하) */
+@media screen and (max-width: 768px) {
+    /* 1. 네비게이션 바 높이 축소 및 가로 정렬 유지 */
+    .top-nav.mobile-nav {
+        padding: 15px 20px;
+        display: flex;
+        flex-direction: row;    /* 세로가 아닌 가로 유지 */
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    /* 2. 로고 크기 축소 */
+    .nav-title-sm {
+        font-family: 'Black Han Sans', sans-serif;
+        font-size: 1.4rem;
+        color: white;
+        text-decoration: none;
+    }
+
+    /* 3. 메뉴 버튼을 메인 페이지 버튼 스타일로 작게 변경 */
+    .nav-right-sm {
+        display: flex;
+        gap: 8px;
+    }
+
+    .nav-btn-sm {
+        text-decoration: none;
+        color: white;
+        font-size: 0.75rem;
+        padding: 6px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(5px);
+    }
+
+    /* 4. 로그인 카드 위치 상단으로 올리기 */
+    .hero-content {
+        padding-top: 80px; /* 네비게이션이 얇아졌으므로 여백 축소 */
+    }
+
+    .register-card {
+        width: 90%;       /* 모바일에서 카드 너비 확장 */
+        padding: 30px 20px; /* 내부 여백 축소 */
+    }
+}
