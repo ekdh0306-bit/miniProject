@@ -16,21 +16,23 @@
     <div class="hero-content">
         <div class="button-group">
             <span class="nav-title">열린마당</span>
-<a href="/introduce" class="hero-btn">사이트 소개</a>
+            <a href="/introduce" class="hero-btn">사이트 소개</a>
 
-{% if session.get('user_name') %}
-    <a href="{{ url_for('mypage') }}" class="hero-btn">마이페이지</a>
+            {% if session.get('user_name') %}
+            <a href="{{ url_for('mypage') }}" class="hero-btn">마이페이지</a>
 
-    <a href="{{ url_for('logout') }}" class="hero-btn"
-       style="border-color: rgba(255,255,255,0.3);">
-        로그아웃
-    </a>
-{% else %}
-    <a href="{{ url_for('login') }}" class="hero-btn">
-        로그인
-    </a>
-{% endif %}
-            <a href="/join" class="hero-btn btn-register">회원가입</a>
+            <a href="{{ url_for('logout') }}" class="hero-btn"
+               style="border-color: rgba(255,255,255,0.3);">
+                로그아웃
+            </a>
+            {% else %}
+            <a href="{{ url_for('login') }}" class="hero-btn">
+                로그인
+            </a>
+            {% endif %}
+            {% if not session.get('user_id') %}
+                <a href="/join" class="hero-btn btn-register">회원가입</a>
+            {% endif %}
             <a href="/analyze" class="hero-btn btn-analysis">분석 게시판</a>
         </div>
         <div class="hero-content">
