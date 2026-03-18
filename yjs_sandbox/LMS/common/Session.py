@@ -1,4 +1,5 @@
-import pymysql
+import pymysql # pip install pymysql
+                # pip install crypthography 인증 설치 필수
 class Session:
     current_user = None
 

@@ -10,7 +10,7 @@ class Member:
         self.active = active
 
     @classmethod # self 대신 cls 객체 사용
-    def from_db(cls, row = dict): # dict 타입으로 가져와 member 객체로 변환
+    def from_db(cls, row : dict): # dict 타입으로 가져와 member 객체로 변환
         if not row:
             return None
         return cls(

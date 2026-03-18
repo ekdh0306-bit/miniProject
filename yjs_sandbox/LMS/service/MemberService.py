@@ -1,7 +1,5 @@
-
-from project_files.common.session import Session
-from project_files.domain.Member import Member
-
+from LMS.common.Session import Session
+from LMS.domain.Member import Member
 
 class MemberService:
     @staticmethod
@@ -13,9 +11,12 @@ class MemberService:
                 cursor.execute(sql, (uid, password, name, email))
                 conn.commit()
                 return True
+
         except Exception as e:  # 예외발생시 실행문
+            print('/join 메서드 오류 발생')
             print(f"회원가입 에러: {e}")
-            return "가입 도중 오류가 발생하였습니다. join 메서드를 확인하세요"
+            raise e
+
         finally:
             conn.close() # 데이터 베이스 연결 종료
 
@@ -24,10 +25,16 @@ class MemberService:
         conn = Session.get_connection()
         try:
             with conn.cursor() as cursor:
-                # 보안상 필요한 정보만 가져온다 (id, name, uid, role)
+                # 보안상 필요한 정보만 가져온다 (id, name, uid, email, role)
                 sql = "SELECT id, name, uid, email, role FROM members WHERE uid = %s AND password = %s"
                 cursor.execute(sql, (uid, password))
                 return cursor.fetchone() # 조회 결과를 하나씩 반환
+
+        except Exception as e:
+            print('/login 메서드 오류 발생')
+            print(f"로그인 에러:{e}")
+            raise e
+
         finally:
             conn.close()
 
@@ -44,6 +51,12 @@ class MemberService:
                 cursor.execute("SELECT * FROM members WHERE uid = %s", (uid,))
                 # 결과가 존재하면(is not None) True 반환
                 return cursor.fetchone() is not None
+
+        except Exception as e:
+            print('/login 메서드 오류 발생')
+            print(e)
+            raise e
+
         finally:
             conn.close()
 
@@ -65,9 +78,12 @@ class MemberService:
                 conn.commit() # 데이터 변경사항 저장
                 return True
 
-        except Exception as e:  # 예외발생시 실행문
-            print(f"회원수정 에러:{e}")
-            return False
+
+        except Exception as e:
+
+            print('/login 메서드 오류 발생')
+            print(f"로그인 에러:{e}")
+            raise e
 
         finally:
             conn.close()
@@ -96,7 +112,8 @@ class MemberService:
 
         except Exception as e:
             print(f"회원 탈퇴 중 오류: {e}")
-            conn.rollback()
+
+            conn.rollback() # 에러시 롤백
             return False
 
         finally:

@@ -1,0 +1,156 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+    <div class="hero-content" style="width: 100%; max-width: 1400px; padding-top: 120px;"> <div class="main-analyzer-container">
+            <div class="register-card" style="flex: 1; min-width: 350px; margin: 0; padding: 30px;">
+                <h3 class="register-title" style="font-size: 1.5rem;">데이터 업로드</h3>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button type="button" class="hero-btn type-tab active" id="tab-image" onclick="toggleUploadType('image')" style="flex:1;">📸 이미지</button>
+                    <button type="button" class="hero-btn type-tab" id="tab-video" onclick="toggleUploadType('video')" style="flex:1;">🎥 영상</button>
+                </div>
+
+                <form id="uploadForm">
+                    <div id="image-section">
+                        <div class="input-group">
+                            <input type="file" name="image_file" id="imageInput" accept="image/*" onchange="previewFile('image')" style="display: none;">
+                            <label for="imageInput" class="hero-btn">이미지 선택</label>
+                        </div>
+                        <div id="imagePreview" class="preview-box">
+                            <p style="color: rgba(255,255,255,0.3);">이미지 미리보기</p>
+                        </div>
+                    </div>
+
+                    <div id="video-section" style="display: none;">
+                        <div class="input-group">
+                            <input type="file" name="video_file" id="videoInput" accept="video/*" onchange="previewFile('video')" style="display: none;">
+                            <label for="videoInput" class="hero-btn" style="width:100%; background:rgba(255,255,255,0.1);">영상 선택</label>
+                        </div>
+                        <div id="videoPreview" class="preview-box">
+                            <p style="color: rgba(255,255,255,0.3);">영상 미리보기</p>
+                        </div>
+                    </div>
+
+                    <div class="input-group" style="margin-top: 20px;">
+                        <label>메모</label>
+                        <input type="text" name="description" id="description" placeholder="설명 입력...">
+                    </div>
+
+                    <button type="button" onclick="uploadFileWithProgress()" class="hero-btn" style="width: 100%; margin-top: 20px; background: #00d1b2; color: black; border: none;">
+                        분석 시작
+                    </button>
+                </form>
+            </div>
+
+            <div class="register-card" style="flex: 2; min-width: 600px; margin: 0; background: rgba(255,255,255,0.05);">
+                <h2 class="register-title" style="color: #00d1b2;">파일 분석 결과</h2>
+                <div id="result-placeholder" style="height: 400px; display: flex; justify-content: center; align-items: center; border: 2px dashed rgba(255,255,255,0.1); border-radius: 20px;">
+                    <p style="color: rgba(255,255,255,0.4); font-size: 1.2rem;">왼쪽에서 파일을 업로드하면 분석이 시작됩니다.</p>
+                </div>
+                <div id="result-content" style="display: none;">
+                    <div class="input-group">
+                        <label style="font-size: 1.2rem; color: #00d1b2;">📊 분석 상태: <span id="res-status" style="color:white;">완료</span></label>
+                        <div id="res-detail" style="background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; min-height: 300px; color: #ddd; font-size: 1.1rem; margin-top:15px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentType = 'image'; // 현재 상태 저장 변수
+
+    // 1. 탭 전환 함수
+    function toggleUploadType(type) {
+        currentType = type;
+        const imageSection = document.getElementById('image-section');
+        const videoSection = document.getElementById('video-section');
+        const imageTab = document.getElementById('tab-image');
+        const videoTab = document.getElementById('tab-video');
+
+        if (type === 'image') {
+            imageSection.style.display = 'block';
+            videoSection.style.display = 'none';
+            imageTab.classList.add('active');
+            videoTab.classList.remove('active');
+        } else {
+            imageSection.style.display = 'none';
+            videoSection.style.display = 'block';
+            imageTab.classList.remove('active');
+            videoTab.classList.add('active');
+        }
+    }
+
+    // 2. 미리보기 함수
+    function previewFile(type) {
+        const input = document.getElementById(type + 'Input');
+        const preview = document.getElementById(type + 'Preview');
+        const file = input.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.innerHTML = '';
+                if (type === 'image') {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    preview.appendChild(img);
+                } else {
+                    const video = document.createElement('video');
+                    video.src = e.target.result;
+                    video.controls = true;
+                    preview.appendChild(video);
+                }
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // 3. 업로드 및 결과 표시 함수
+    function uploadFileWithProgress() {
+        const form = document.getElementById('uploadForm');
+        const formData = new FormData(form);
+
+        // 현재 탭에 맞는 파일만 필터링
+        if (currentType === 'image') {
+            formData.delete('video_file');
+        } else {
+            formData.delete('image_file');
+        }
+
+        const fileInput = document.getElementById(currentType + 'Input');
+        if (!fileInput.files[0]) {
+            alert("파일을 선택해주세요!");
+            return;
+        }
+
+        const xhr = new XMLHttpRequest();
+        // 업로드 중 로딩 처리 (필요시 추가)
+
+        xhr.addEventListener('load', function() {
+            if (xhr.status === 200) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    document.getElementById('result-placeholder').style.display = 'none';
+                    document.getElementById('result-content').style.display = 'block';
+                    document.getElementById('res-detail').innerText = response.analysis_result || "분석 내용이 없습니다.";
+                    alert("분석이 완료되었습니다!");
+                } catch (e) {
+                    alert("결과 처리 중 오류가 발생했습니다.");
+                }
+            } else {
+                alert("업로드 실패: " + xhr.status);
+            }
+        });
+
+        xhr.open('POST', '/board/result', true);
+        xhr.send(formData);
+    }
+
+</script>
+
+{% endblock %}
