@@ -2,7 +2,7 @@ name: Notion Sync Bot
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "psh-confirm", "LJJ-connect", "yjs-backend", "ksbrn-frontend", "KSB---CRUD", "jjh-crud" ]
 
 jobs:
   run-sync:
