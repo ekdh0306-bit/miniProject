@@ -1,9 +1,9 @@
 class Member:
 
-    def __init__(self, id,  uid, pw, name, email, role="user", active=True, created_at=None):
+    def __init__(self, id,  uid, password, name, email, role="user", active=True, created_at=None):
         self.id = id
         self.uid = uid
-        self.pw = pw
+        self.password = password
         self.name = name
         self.email = email
         self.role = role

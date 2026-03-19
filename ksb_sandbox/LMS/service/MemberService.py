@@ -10,14 +10,14 @@ class MemberService:
     def login(cls):
         print("\n[로그인]")
         uid = input("아이디: ")
-        pw = input("비밀번호: ")
+        password = input("비밀번호: ")
 
         conn = Session.get_connection()
 
         try:
             with conn.cursor() as cursor:
-                sql = "select * from members where uid = %s and pw = %s"
-                cursor.execute(sql, (uid, pw))
+                sql = "select * from members where uid = %s and password = %s"
+                cursor.execute(sql, (uid, password))
 
                 row = cursor.fetchone()
 
@@ -67,7 +67,7 @@ class MemberService:
 
     # 비밀번호 찾기 / 변경///
     @classmethod
-    def reset_pw(cls):
+    def reset_password(cls):
         print("\n[비밀번호 변경]")
         uid = input("아이디 입력: ")
 
@@ -88,11 +88,11 @@ class MemberService:
                     return
 
                 # 새 비밀번호 입력
-                new_pw = input("새 비밀번호: ")
+                new_password = input("새 비밀번호: ")
 
-                sql = "update members set pw = %s where uid = %s"
+                sql = "update members set password = %s where uid = %s"
                 # Members 테이블에서 uid가 입력한 uid와 같은 사용자의 비번을 수정해라
-                cursor.execute(sql, (new_pw, uid))
+                cursor.execute(sql, (new_password, uid))
                 conn.commit()
                 print("비밀번호가 변경되었습니다.")
 
@@ -129,12 +129,13 @@ class MemberService:
                     print("이미 존재하는 아이디입니다.")
                     return
 
-                pw = input("비밀번호: ")
+                password = input("비밀번호: ")
                 name = input("이름: ")
+                email = input("이메일: ")
 
                 # 2. 데이터 삽입
-                insert_sql = "INSERT INTO members (uid, password, name) VALUES (%s, %s, %s)"
-                cursor.execute(insert_sql, (uid, pw, name))
+                insert_sql = "INSERT INTO members (uid, password, name, email) VALUES (%s, %s, %s, %s)"
+                cursor.execute(insert_sql, (uid, password, name, email))
                 conn.commit()
                 print("회원가입 완료! 로그인해 주세요.")
         except Exception as e:
@@ -157,12 +158,12 @@ class MemberService:
         sel = input("선택: ")
 
         new_name = member.name
-        new_pw = member.pw
+        new_password = member.password
 
         if sel == "1":
             new_name = input("새 이름: ")
         elif sel == "2":
-            new_pw = input("새 비밀번호: ")
+            new_password = input("새 비밀번호: ")
         elif sel == "3":
             print("회원 중지 및 탈퇴를 진행합니다.")
             cls.delete()
@@ -173,12 +174,12 @@ class MemberService:
         try:
             with conn.cursor() as cursor:
                 sql = "UPDATE members SET name = %s, password = %s WHERE id = %s"
-                cursor.execute(sql, (new_name, new_pw, member.id))
+                cursor.execute(sql, (new_name, new_password, member.id))
                 conn.commit()
 
                 # 메모리(세션) 정보도 동기화
                 member.name = new_name
-                member.pw = new_pw
+                member.password = new_password
                 print("정보 수정 완료")
         finally:
             conn.close()
