@@ -11,25 +11,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-    <div class="top-nav">
-        <div class="nav-left">
-            <a href="/" class="nav-title">열린마당</a>
-        </div>
-        <div class="nav-right">
-            {% if session.get('user_name') %}
-            <a href="/mypage" class="nav-item">마이페이지</a>
-            {% endif %}
-            <a href="/analyze" class="nav-item">분석 게시판</a>
-            {% if request.path == '/login' %}
-            <a href="/join" class="nav-item">회원가입</a>
-            {% elif request.path == '/join' %}
-            <a href="/login" class="nav-item">로그인</a>
-            {% endif %}
-        </div>
+<div class="top-nav">
+    <div class="nav-left">
+        <a href="/" class="nav-title">열린마당</a>
     </div>
+    <div class="nav-right">
+        {% if session.get('user_name') %}
+        <a href="/mypage" class="nav-item">마이페이지</a>
+        {% endif %}
+        <a href="/analyze" class="nav-item">분석하기</a>
+        <a href="/analyze/list" class="nav-item">분석 게시판</a>
+        {% if request.path == '/login' %}
+        <a href="/join" class="nav-item">회원가입</a>
+        {% elif request.path == '/join' %}
+        <a href="/login" class="nav-item">로그인</a>
+        {% endif %}
+    </div>
+</div>
 
-    <div class="content-wrapper">
-        {% block content %}{% endblock %}
-    </div>
+<div class="content-wrapper">
+    {% block content %}{% endblock %}
+</div>
 </body>
 </html>
