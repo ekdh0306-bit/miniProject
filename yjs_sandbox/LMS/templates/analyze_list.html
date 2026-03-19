@@ -1,0 +1,66 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container" style="min-height: 100vh; height: auto; padding-bottom: 80px;">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+
+        <div class="list-header" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; padding: 0 20px;">
+            <h2 class="register-title" style="margin: 0; color: #00d1b2; font-size: 1.8rem;">🔬 분석 히스토리</h2>
+            <p style="color: rgba(255,255,255,0.5); margin: 0;">지금까지 분석한 총 <span style="color:#00d1b2;">{{ analyze_list|length }}</span>개의 리포트가 있습니다.</p>
+        </div>
+
+        <div class="analysis-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 0 20px;">
+            {% for item in analyze_list %}
+            <div class="register-card"
+                 onclick="goToDetail('{{item.file_type}}', '{{item.file_path}}', '{{item.description}}', '{{item.analysis_result}}')"
+                 style="cursor: pointer; transition: 0.3s; margin: 0; padding: 30px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); backdrop-filter: blur(5px);">
+
+                <h3 style="color: #00d1b2; margin-bottom: 15px; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {{ item.description or '제목 없음' }}
+                </h3>
+
+                <div class="list-info">
+                    <p style="color: rgba(255,255,255,0.4); font-size: 0.9rem; margin-bottom: 15px;">
+                        📅 분석일: {{ item.created_at }}
+                    </p>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.8rem; color: #00d1b2; background: rgba(0,209,178,0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(0,209,178,0.3);">
+                            {{ '분석 완료' if item.status == 'done' else '분석 중' }}
+                        </span>
+                        <span style="color: #00d1b2; font-weight: bold;">리포트 보기 →</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="list-footer" style="margin-top: 60px; padding: 40px 0; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 20px;">
+            <p style="color: rgba(255,255,255,0.4);">원하는 분석 결과가 없나요?</p>
+            <div style="display: flex; gap: 15px;">
+                <button onclick="location.href='/analyze'" class="hero-btn" style="background: #00d1b2; color: black; min-width: 220px; font-weight: bold; border: none; box-shadow: 0 4px 15px rgba(0,209,178,0.3);">
+                    ➕ 새 분석 시작하기
+                </button>
+                <button onclick="location.href='/'" class="hero-btn" style="background: rgba(255,255,255,0.1); color: white; min-width: 150px; border: 1px solid rgba(255,255,255,0.2);">
+                    🏠 메인으로
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function goToDetail(type, src, memo, result) {
+    const data = {
+        type: type,
+        mediaSrc: src,
+        memo: memo,
+        result: result
+    };
+    localStorage.setItem('temp_analysis_data', JSON.stringify(data));
+    location.href = '/analyze/analysis';
+}
+</script>
+{% endblock %}
