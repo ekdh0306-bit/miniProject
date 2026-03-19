@@ -106,24 +106,31 @@ def member_edit():
                 return render_template('member_edit.html', user=user_info)
 
             # post 요청: 정보 업데이트
-            new_name = request.form.get('name')
-            new_password = request.form.get('password')
 
-            if new_password: # 폼에서 비밀번호 입력칸이 비어있지 않을 때만 실행(빈칸이면 실행 안함)
+            new_uid = request.form.get('new_uid')
+            new_password = request.form.get('password')
+            new_email = request.form.get('new_email')
+
+            if new_uid:
+                sql = "update members set uid = %s where id = %s"
+                cursor.execute(sql, (new_uid, session['user_id']))
+                session['user_uid'] = new_uid # 세션
+
+            elif new_password:
                 sql = "update members set password = %s where id = %s"
-                # members 테이블에서 id가 특정값인 회원에 이름과 비번을 수정한다.
                 cursor.execute(sql, (new_password, session['user_id']))
 
-            else: # 이름만 변경
-                sql = "update members set name = %s where id = %s"
-                cursor.execute(sql, (new_name, session['user_id']))
+            elif new_email:
+                sql = "update members set email = %s where id = %s"
+                cursor.execute(sql, (new_email, session['user_id']))
 
-                conn.commit()
-                session['user_name'] = new_name # 세션 이름 정보도 갱신
-                return "<script>alert('정보가 수정되었습니다.');location.href='/mypage';</script>"
+            conn.commit()
+
+            return "<script>alert('정보가 수정되었습니다.');location.href='/mypage';</script>"
 
     finally:
         conn.close()
+
 
 # 마이페이지
 @app.route('/mypage')

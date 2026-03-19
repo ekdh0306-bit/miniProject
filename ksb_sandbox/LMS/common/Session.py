@@ -8,13 +8,22 @@ class Session:
         print("get_connection()메서드 호출 - mysql에 접속됩니다.")
 
         return pymysql.connect(
-            host='192.168.0.173',
-            user='ksb',
+            host='127.0.0.1',
+            user='root',
             password='1234',
             db='miniproject',
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
+
+        # return pymysql.connect(
+        #     host='192.168.0.173',
+        #     user='ksb',
+        #     password='1234',
+        #     db='miniproject',
+        #     charset='utf8mb4',
+        #     cursorclass=pymysql.cursors.DictCursor
+        # )
 
 
     @staticmethod
