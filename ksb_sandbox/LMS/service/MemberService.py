@@ -154,7 +154,7 @@ class MemberService:
 
         member = Session.login_member
         print(f"내정보확인 : {member}")  # Member.__str__()
-        print("\n[내 정보 수정]\n1. 이름 변경  2. 비밀번호 변경 3. 계정비활성 및 탈퇴 0. 취소")
+        print("\n[내 정보 수정]\n1. 이름 변경  2. 비밀번호 변경 3. 탈퇴 0. 취소")
         sel = input("선택: ")
 
         new_name = member.name
@@ -165,7 +165,7 @@ class MemberService:
         elif sel == "2":
             new_password = input("새 비밀번호: ")
         elif sel == "3":
-            print("회원 중지 및 탈퇴를 진행합니다.")
+            print("탈퇴를 진행합니다.")
             cls.delete()
         else:
             return
@@ -320,15 +320,6 @@ class MemberService:
             conn.close()
 
 
-    # 블랙리스트 목록
-
-
-
-
-
-
-
-
     # 전체 회원 목록 조회
     @classmethod
     def member_list(cls):
@@ -352,10 +343,3 @@ class MemberService:
 
         finally:
             conn.close()
-
-
-    # 탐지 기록 조회
-
-
-
-

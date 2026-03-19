@@ -157,17 +157,20 @@ def mypage():
 def analyze():
         return render_template('analyze.html')
 
-# 글쓰기 페이지
-
-
-
 
 # 게시글 상세보기
 
 
 
 
+
+
 # 게시글 삭제
+
+
+
+
+
 
 
 # 사이트 소개
