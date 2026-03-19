@@ -28,4 +28,5 @@ jobs:
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           NOTION_STATUS_DB_ID: ${{ secrets.NOTION_STATUS_DB_ID }}
           REPO_NAME: ${{ secrets.REPO_NAME }}
+          COMMIT_SHA: ${{ github.sha }}
         run: python git_actions.py
