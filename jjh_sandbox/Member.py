@@ -1,7 +1,7 @@
 class Member:
 
-    def __init__(self, member_id, uid, pw, name, role="user",active=True, created_at = None):
-        self.id = member_id # DB의 PK -> AUTO_INCREMENT 자동번호 생성
+    def __init__(self, id, uid, pw, name, role="user", active=True, created_at = None):
+        self.id = id # DB의 PK -> AUTO_INCREMENT 자동번호 생성
         self.uid = uid
         self.pw = pw
         self.name = name
@@ -18,7 +18,7 @@ class Member:
             return None
 
         return cls( # db에 있는 정보를 dict 타입으로 받아와 id에 넣음
-            member_id = row.get('id'),
+            id = row.get('id'),
             uid = row.get('uid'),
             pw = row.get('password'),
             name = row.get('name'),
