@@ -1,17 +1,14 @@
 import os
 import re
 import requests
+from github import Github, Auth
 
 # 환경 변수 설정
+GH_TOKEN = os.environ.get("GH_TOKEN")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
 NOTION_STATUS_DB_ID = os.environ.get("NOTION_STATUS_DB_ID")
 REPO_NAME = os.environ.get("REPO_NAME")
-# 워크플로우에서 직접 전달받는 커밋 정보
-COMMIT_MESSAGE = os.environ.get("COMMIT_MESSAGE")
-COMMIT_AUTHOR = os.environ.get("COMMIT_AUTHOR")
-COMMIT_URL = os.environ.get("COMMIT_URL")
-COMMIT_DATE = os.environ.get("COMMIT_DATE")
 
 STATUS_MAP = {
     "#idea": "아이디어",
@@ -105,21 +102,24 @@ def sync_to_notion():
     print(f"REPO_NAME: {REPO_NAME}")
     print(f"NOTION_DB_ID 수신 여부: {'수신 완료' if NOTION_DB_ID else '미수신'}")
     print(f"NOTION_STATUS_DB_ID 수신 여부: {'수신 완료' if NOTION_STATUS_DB_ID else '미수신'}")
+    print(f"GH_TOKEN 수신 여부: {'수신 완료' if GH_TOKEN else '미수신'}")
     print(f"NOTION_TOKEN 수신 여부: {'수신 완료' if NOTION_TOKEN else '미수신'}")
 
-    # 필수 환경변수 확인 (워크플로우에서 전달되는 커밋 정보 포함)
-    required_vars = [NOTION_TOKEN, NOTION_DB_ID, NOTION_STATUS_DB_ID, REPO_NAME, COMMIT_MESSAGE, COMMIT_AUTHOR, COMMIT_URL, COMMIT_DATE]
-    if not all(required_vars):
+    if not all([GH_TOKEN, NOTION_TOKEN, NOTION_DB_ID, NOTION_STATUS_DB_ID, REPO_NAME]):
         print("하나 이상의 필수 환경변수가 설정되지 않았습니다. 워크플로우를 확인해주세요.")
         return
 
     try:
-        print(f"처리할 커밋 메시지: {COMMIT_MESSAGE}")
+        g = Github(auth=Auth.Token(GH_TOKEN))
+        repo = g.get_repo(REPO_NAME)
+        # 최신 커밋 1개만 가져오기
+        latest_commit = repo.get_commits()[0]
+       
+        msg = latest_commit.commit.message
+        print(f"최신 커밋 메시지: {msg}")
         
-        # Notion DB에 커밋 로그 기록
-        commit_to_notion(COMMIT_MESSAGE, COMMIT_AUTHOR, COMMIT_URL, COMMIT_DATE)
-        # 커밋 메시지 분석 후 Notion 상태 DB 업데이트
-        update_task_status(COMMIT_MESSAGE)
+        commit_to_notion(msg, latest_commit.commit.author.name, latest_commit.html_url, latest_commit.commit.author.date.isoformat())
+        update_task_status(msg)
        
     except Exception as e:
         print(f"전체 프로세스 에러: {e}")
