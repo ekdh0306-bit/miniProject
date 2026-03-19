@@ -28,6 +28,10 @@ HEADERS = {
 }
 
 def update_task_status(msg):
+    # 이 함수는 커밋 메시지를 분석하여 Notion DB의 작업 상태를 업데이트합니다.
+    # 1. 커밋 메시지에서 상태 태그(예: #coding)와 작업 번호(예: STA-123)를 찾습니다.
+    # 2. 작업 번호를 이용해 Notion 상태 관리 DB에서 해당 페이지를 쿼리합니다.
+    # 3. 쿼리 성공 시, 찾은 페이지의 '상태' 속성을 커밋 메시지의 태그에 맞게 변경합니다.
     found_status = next((status for key, status in STATUS_MAP.items() if key in msg), None)
     match = re.search(r'STA-(\d+)', msg)
    
@@ -50,10 +54,20 @@ def update_task_status(msg):
         res = requests.post(query_url, headers=HEADERS, json=filter_payload)
         print(f"상태 DB 조회 응답 코드: {res.status_code}")
         
+        # 디버깅 코드 추가: API 응답이 성공(200)이 아닐 경우, 상세 오류 메시지를 출력하고 종료합니다.
+        # 이 코드는 Notion API가 왜 요청을 거부했는지 정확한 원인을 파악하기 위해 필수적입니다.
+        if res.status_code != 200:
+            print("!!! Notion API 오류 발생 !!!")
+            print(f"오류 코드: {res.status_code}")
+            print(f"상세 메시지: {res.text}")
+            return
+        
         results = res.json().get('results', [])
 
         if not results:
-            print(f" {match.group()}에 해당하는 페이지가 없습니다.")
+            # API 요청은 성공했으나, 조건에 맞는 페이지를 찾지 못한 경우입니다.
+            print(f"'{match.group()}'에 해당하는 페이지를 Notion 상태 데이터베이스에서 찾을 수 없습니다. (API 조회는 성공했으나 결과가 없음)")
+            print("페이지가 실제로 존재하고, 'ID' 속성에 올바른 값이 있는지 확인해주세요.")
             return
 
         target_page_id = results[0]['id']
@@ -73,9 +87,10 @@ def update_task_status(msg):
             print(f" 상태 업데이트 실패: {res_up.text}")
            
     except Exception as e:
-        print(f" 상태 업데이트 에러 발생: {e}")
+        print(f" 상태 업데이트 처리 중 예외 발생: {e}")
 
 def commit_to_notion(msg, author, url, date):
+    # 이 함수는 새로운 커밋 정보를 Notion 로그 DB에 페이지로 생성합니다.
     try:
         clean_log_db_id = NOTION_DB_ID.strip().replace("-", "")
         create_url = "https://api.notion.com/v1/pages"
@@ -98,7 +113,7 @@ def commit_to_notion(msg, author, url, date):
             print(f"[로그 DB] 기록 실패: {res.text}")
             
     except Exception as e:
-        print(f"로그 DB 오류: {e}")
+        print(f"로그 DB 기록 중 예외 발생: {e}")
 
 def sync_to_notion():
     print("스크립트 실행 시작")
