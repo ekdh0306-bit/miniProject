@@ -89,7 +89,7 @@
 
                     <div style="display: flex; justify-content: center; margin-top: 15px;">
                         <button type="button" class="hero-btn" onclick="goToDetailPage()" style="min-width: 200px;">
-                            <a href="/analysis" style="text-decoration: none; color: inherit;"> 자세히 보기 </a>
+                            자세히 보기
                         </button>
                     </div>
                 </div>
@@ -217,29 +217,32 @@
 
     // 5. 상세 페이지 이동 함수
     function goToDetailPage() {
-        const previewId = currentType === 'image' ? 'imagePreview' : 'videoPreview';
-        const mediaElement = document.querySelector(`#${previewId} img, #${previewId} video`);
+    const previewId = currentType === 'image' ? 'imagePreview' : 'videoPreview';
+    const mediaElement = document.querySelector(`#${previewId} img, #${previewId} video`);
 
-        if (!mediaElement) {
-            alert("분석된 파일이 없습니다.");
-            return;
-        }
+    // 추가: 분석 결과 텍스트가 비어있는지 확인
+    const resultText = document.getElementById('res-detail').innerText.trim();
 
-        const analysisData = {
-            type: currentType,
-            mediaSrc: mediaElement.src,
-            memo: document.getElementById('description').value,
-            result: document.getElementById('res-detail').innerText
-        };
-
-        try {
-            localStorage.setItem('temp_analysis_data', JSON.stringify(analysisData));
-            location.href = '/analysis';
-        } catch (e) {
-            console.error("저장 실패:", e);
-            alert("파일 용량이 너무 커서 상세 페이지로 이동할 수 없습니다.");
-        }
+    if (!mediaElement || !resultText) {
+        alert("분석이 완료된 후에 상세 보기가 가능합니다.");
+        return;
     }
+
+    const analysisData = {
+        type: currentType,
+        mediaSrc: mediaElement.src,
+        memo: document.getElementById('description').value,
+        result: resultText
+    };
+
+    try {
+        localStorage.setItem('temp_analysis_data', JSON.stringify(analysisData));
+        location.href = '/analysis';
+    } catch (e) {
+        console.error("저장 실패:", e);
+        alert("파일 용량이 너무 커서 상세 페이지로 이동할 수 없습니다.");
+    }
+}
 </script>
 
 {% endblock %}
