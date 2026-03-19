@@ -34,7 +34,7 @@ class MemberService:
     def login(cls):
         print("\n[로그인]")
         uid = input("아이디: ")
-        pw = input("비밀번호: ")
+        password = input("비밀번호: ")
 
         conn = Session.get_connection()
 
@@ -43,7 +43,7 @@ class MemberService:
                 # 1. 아이디와 비밀번호가 일치하는 회원 조회
                 sql = "SELECT * FROM members WHERE uid = %s AND password = %s"
                 print("sql =" + sql)
-                cursor.execute(sql, (uid, pw))
+                cursor.execute(sql, (uid, password))
                 row = cursor.fetchone()
 
                 if row:
@@ -77,38 +77,30 @@ class MemberService:
 
     # 회원가입
     @classmethod
-    def signup(cls):
-        print("\n[회원가입]")
-        uid = input("아이디: ")
- 
+    def signup(cls, uid, password,  name, email):
+        """
+        웹에서 전달받은 uid, password, name, email으로 회원가입 처리
+        """
         conn = Session.get_connection()
         try:
             with conn.cursor() as cursor:
                 # 1. 중복 체크
-                check_sql = "SELECT id FROM members WHERE uid = %s"
-                cursor.execute(check_sql, (uid,)) # 튜플은 1개여도 쉼표 필수
-                # print("cursor.fetchone() : " + cursor.fetchone()[0])
-                # SQL 쿼리 결과에서 단 한 개의 행(row)만 튜플(tuple) 형태로 반환합니다.
-                # 호출할 때마다 다음 행으로 넘어가며, 더 이상 행이 없으면 None을 반환합니다.
-                # 딕셔너리 커서 사용 시 딕셔너리 형태로도 출력됩니다
+                cursor.execute("SELECT id FROM members WHERE uid = %s", (uid,))
                 if cursor.fetchone():
-                    print("이미 존재하는 아이디입니다.")
-                    return
+                    # 이미 존재하는 아이디
+                    raise ValueError("이미 존재하는 아이디입니다.")
 
-                pw = input("비밀번호: ")
-                name = input("이름: ")
-
-                # 2. 데이터 삽입
-                insert_sql = "INSERT INTO members (uid, password, name) VALUES (%s,%s, %s)"
-                cursor.execute(insert_sql, (uid, pw, name))
+                # 2. DB에 회원 정보 저장
+                cursor.execute(
+                    "INSERT INTO members (uid, password, name, email) VALUES (%s, %s, %s, %s)",
+                    (uid, password, name, email)
+                )
                 conn.commit()
-                print("회원가입 완료! 로그인해 주세요.")
+                return True  # 회원가입 성공
         except Exception as e:
             conn.rollback()
-            # 트랜젝션 : with안쪽에 2개이상의 sql문이 둘다 true일때는 commit()
-            #                    2중 한개라도 오류가 발생하면 rollback()
-            print(f"회원가입 오류: {e}")
-        finally :
+            raise e  # Flask 라우트에서 처리하도록 예외 전달
+        finally:
             conn.close()
 
 # =====================================
@@ -121,7 +113,7 @@ class MemberService:
         conn = Session.get_connection()  # lms db를 가져와서 conn에 넣음
         try:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT id, uid, name, role FROM members")
+                cursor.execute("SELECT id, uid, name, email, role FROM members")
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -186,14 +178,14 @@ class MemberService:
     # -----------------------------
 
     @staticmethod
-    def update_member(member_id, new_name=None, new_pw=None):
+    def update_member(member_id, new_name=None, new_password=None, new_email=None):
         # 특정 회원의 이름(name)과 비밀번호(password)를 수정
         conn = Session.get_connection()
         try:
             with conn.cursor() as cursor:
-                sql = "UPDATE members SET name=%s, password=%s WHERE id=%s"
+                sql = "UPDATE members SET name=%s, password=%s, email=%s WHERE id=%s"
                 # members테이블에서 해당 id회원의 정보를 수정
-                cursor.execute(sql, (new_name, new_pw, member_id)) # 전달값
+                cursor.execute(sql, (new_name, new_password,new_email, member_id)) # 전달값
                 conn.commit() #DB에 반영됨
         finally:
             conn.close()
@@ -224,61 +216,6 @@ class MemberService:
                 return user_info, board_count # 회원정보랑 게시글 수 같이 반환
         finally:
             conn.close()
-
-    # # 활동 없는 회원
-    # @staticmethod
-    # def get_inactive_members():
-    #     conn = Session.get_connection()
-    #     try:
-    #         with conn.cursor() as cursor:
-    #             cursor.execute("""
-    #                 SELECT m.id, m.uid, m.name
-    #                 FROM members m
-    #                 LEFT JOIN boards b ON m.id = b.member_id
-    #                 WHERE b.id IS NULL
-    #             """)
-    #             return cursor.fetchall()
-    #     finally:
-    #         conn.close()
-
-    # 회원수정
-    # @classmethod
-    # def modify(cls): # 회원 수정 메서드
-    #     if not Session.is_login() :
-    #         print("로그인 후 이용 가능합니다.")
-    #         return
-    #
-    #     member = Session.login_member
-    #     print(f"내 정보확인 : {member}")
-    #     print("\n[내 정보 수정]\n 1.이름 변경 2.비밀번호 변경 3.계정비활성 및 탈퇴 0.취소")
-    #     sel = input("선택: ")
-    #
-    #     new_name = member.name
-    #     new_pw = member.pw
-    #
-    #     if sel == "1":
-    #         new_name = input("새 이름: ")
-    #     elif sel == "2":
-    #         new_pw = input("새 비밀번호: ")
-    #     elif sel == "3":
-    #         print("회원 중지 및 탈퇴를 진행합니다.")
-    #         cls.delete()
-    #     else:
-    #         return
-    #
-    #     conn = Session.get_connection()
-    #     try:
-    #         with conn.cursor() as cursor:
-    #             sql = "UPDATE members SET name = %s, password = %s  WHERE id = %s"
-    #             cursor.execute(sql, (new_name, new_pw, member.id))
-    #             conn.commit()
-    #
-    #             # 메모리(세션) 정보도 동기화
-    #             member.name = new_name
-    #             member.pw = new_pw
-    #             print("정보 수정 완료")
-    #     finally:
-    #         conn.close()
 
     # # 회원 탈퇴
     # @classmethod

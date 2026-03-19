@@ -1,116 +1,199 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 from LMS.common.session import Session
 
-app = Flask(__name__, template_folder='templates')
-# 내 브라우저에 저장된 로그인 정보가 안전하게 지켜지도록 잠금 장치 역할
+app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 
-# 로그인
+# ================= 로그인 =================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'GET':
         return render_template('login.html')
 
-    # 사용자가 입력한 값 가져옴
     uid = request.form['uid']
-    upw = request.form['pw']
+    password = request.form['password']
 
     conn = Session.get_connection()
     try:
         with conn.cursor() as cursor:
-            # 1. 회원 정보 조회
-            sql = "SELECT id, name, uid, role FROM members WHERE uid = %s AND password = %s"
-            cursor.execute(sql, (uid, upw))
+            sql = "SELECT id, name, uid, role FROM members WHERE uid=%s AND password=%s"
+            cursor.execute(sql, (uid, password))
             user = cursor.fetchone()
 
         if user:
-            # 2. 로그인 성공 : 세션(로그인 상태를 기억하는 데이터)에 사용자 정보 저장
+            # 세션 저장
             session['user_id'] = user['id']
-            session['name'] = user['name']
+            session['user_name'] = user['name']
             session['user_uid'] = user['uid']
-
-            # 이제 DB에서 'role' 가져왔으니 에러없이 잘 들어감
             session['user_role'] = user['role']
 
             return redirect(url_for('index'))
         else:
             return "<script>alert('아이디 또는 비밀번호가 틀렸습니다.'); history.back();</script>"
+
+    except Exception as e:
+        print(f"로그인 오류 발생: {e}")
+
     finally:
         conn.close()
 
-# 로그아웃
+
+# ================= 로그아웃 =================
 @app.route('/logout')
 def logout():
-    session.clear() # 저장된 로그인 정보 전부 삭제
-    return redirect(url_for('login')) # 로그인 페이지로 이동
+    session.clear()
+    return redirect(url_for('login'))
 
-# 회원가입
+
+# ================= 회원가입 =================
 @app.route('/join', methods=['GET', 'POST'])
 def join():
     if request.method == 'GET':
         return render_template('join.html')
-    # 정보 입력함 (사용자가 입력한 값)
+
     uid = request.form.get('uid')
     password = request.form.get('password')
     name = request.form.get('name')
+    email = request.form.get('email')
+
+    if not uid or not password or not name:
+        return "<script>alert('모든 항목을 입력하세요.'); history.back();</script>"
 
     conn = Session.get_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id FROM members WHERE uid = %s", (uid, )) # DB한테 물어봄 (중복체크)
-            # 이 아이디 이미 있는 사람 있어? 물어봄
+            cursor.execute("SELECT id FROM members WHERE uid=%s", (uid,))
             if cursor.fetchone():
                 return "<script>alert('이미 존재하는 아이디입니다.'); history.back();</script>"
 
-            # 회원 정보 저장
-            sql = "INSERT INTO members (uid, password, name) VALUES (%s, %s, %s)"
-            cursor.execute(sql, (uid, password, name))
-            conn.commit() # DB에 저장 확정
-            # 새로운 회원 DB에 추가
-            return "<script>alert('회원가입이 완료되었습니다.'); location.href='/login';</script>"
-            # 가입 성공 메시지 + 로그인 페이지 이동
-    except Exception as e:
-        print(f"회원가입 에러: {e}")
-        return "가입 중 오류가 발생했습니다."
+            sql = "INSERT INTO members (uid, password, name, email) VALUES (%s, %s, %s, %s)"
+            cursor.execute(sql, (uid, password, name, email))
+            conn.commit()
+
+            return "<script>alert('회원가입 완료! 로그인하세요'); location.href='/login';</script>"
     finally:
         conn.close()
 
-# 회원 수정
+
+# ================= 메인 =================
+@app.route('/')
+def index():
+    return render_template(
+        "main.html",
+        name=session.get('name')  # ✅ 로그인 정보 전달
+    )
+
+# ================= 마이페이지 =================
+@app.route('/mypage')
+def mypage():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM members WHERE id=%s", (session['user_id'],))
+            user_info = cursor.fetchone()
+
+        return render_template('mypage.html', user=user_info)
+    finally:
+        conn.close()
+
+
+# ================= 회원 수정 =================
 @app.route('/member/edit', methods=['GET', 'POST'])
 def member_edit():
-    if 'user_id' not in session: # 로그인 안 했으면 접근 막음
-        return redirect(url_for('login'))   # 로그인 페이지로 이동 -> 회원만 수정 가능
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
     conn = Session.get_connection()
     try:
         with conn.cursor() as cursor:
             if request.method == 'GET':
-                # 기존 정보 불러오기
-                cursor.execute("SELECT * FROM members WHERE id = %s", (session['user_id'], ))
-                user_info = cursor.fetchone() # 로그인한 사용자 정보 가져옴
+                cursor.execute("SELECT * FROM members WHERE id=%s", (session['user_id'],))
+                user_info = cursor.fetchone()
                 return render_template('member_edit.html', user=user_info)
-                # HTML에 사용자 정보 넘김 -> 입력창에 기존 값 채워주는 역할
 
-            # POST 요청: 정보 업데이트
             new_name = request.form.get('name')
-            new_pw = request.form.get('password')
+            new_password = request.form.get('password')
+            new_email = request.form.get('email')  # ✅ 수정됨
 
-            # 비밀번호 변경 여부 판단
-            if new_pw: # 비밀번호 입력 시에만 변경
-                sql = "UPDATE members SET name = %s, password = %s WHERE id = %s"
-                cursor.execute(sql, (new_name, new_pw, session['user_id']))
-            else: # 이름만 변경 (비밀번호 입력 안한 경우)
-                sql = "UPDATE members SET name = %s WHERE id = %s"
-                cursor.execute(sql, (new_name, session['user_id']))
+            if new_password:
+                sql = "UPDATE members SET name=%s, password=%s, email=%s WHERE id=%s"
+                cursor.execute(sql, (new_name, new_password, new_email, session['user_id']))
+            else:
+                sql = "UPDATE members SET name=%s, email=%s WHERE id=%s"
+                cursor.execute(sql, (new_name, new_email, session['user_id']))
 
             conn.commit()
-            # 세션 업데이트
-            session['name'] = new_name # 화면에서 이름 바로 반영되게
-            return "<script>alert('정보가 수정되었습니다.'); location.href='/mypage';</script>"
-            # 알림 띄우고 마이페이지 이동
+
+            session['name'] = new_name
+
+            return "<script>alert('수정 완료'); location.href='/mypage';</script>"
     finally:
         conn.close()
+# 게시글 목록(분석 게시판)
+@app.route('/analyze')
+def analyze():
+    return render_template('analyze.html')
 
+# 게시글 업로드
+# @app.route('/board/upload', methods=['GET', 'POST'])
+# def board_upload():
+#     return "upload page"
+# from flask import request, render_template
+
+@app.route('/board/upload', methods=['GET', 'POST'])
+def board_upload():
+    if request.method == 'GET':
+        return render_template('upload.html')
+
+    # POST (파일 업로드 처리)
+    file = request.files.get('file')
+
+    if not file:
+        return "파일 없음"
+
+    file.save(f'uploads/{file.filename}')
+    return "업로드 성공"
+# ================= 실행 =================
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+#=====================================
+
+boards = [
+    {"id": 1, "title": "첫 번째 글", "content": "안녕하세요!"},
+    {"id": 2, "title": "두 번째 글", "content": "Flask 게시판입니다."},
+]
+
+# 게시글 목록
+@app.route('/board/list')
+def board_list():
+    return render_template('board_list.html', boards=boards)
+
+# 게시글 상세보기
+@app.route('/board/view/<int:id>')
+def board_view(id):
+    board = next((b for b in boards if b['id'] == id), None)
+    if not board:
+        return "게시글이 없습니다.", 404
+    return render_template('board_view.html', board=board)
+
+# 글쓰기 페이지
+
+# 게시글 상세보기
+
+# 게시글 삭제
+
+
+# 사이트 소개
+@app.route('/introduce')
+def about():
+    return render_template('introduce.html')
+
+#==================
 #===================== 여기서부터 추가 기능 ==========================
 
 # 마이페이지
@@ -134,7 +217,7 @@ def mypage():
     finally:
         conn.close()
 
-# 아이디 중복 실시간 체크
+# 아이디 중복 체크
 @app.route('/check_uid') # /check_uid URL로 접속하면 이 함수 실행 GET방식으로 요청 받음
 def check_uid():
     uid = request.args.get('uid')
@@ -226,13 +309,12 @@ def member_search():
             """, (f"%{keyword}%", f"%{keyword}%"))
 
             users = cursor.fetchall() # 결과값 리스트에 딕셔너리 값으로 여러개 나옴
-
             return render_template("member_list.html", users=users) # 결과를 HTML로 넘김
     finally:
         conn.close()
 
-# 회원별 게시글 수를 보여주는 관리자 통계 페이지
-# (누가 글을 많이 썼는지 순위 보여주는 기능)
+# 회원별 게시글 수를 보여주는 관리자 통계 페이지 (누가 글을 많이 썼는지 순위 보여주는 기능)
+# 회원별 글쓰기 갯수 순위
 @app.route('/admin/member_stats')
 def member_stats():
 # stats안에 SELECT m.id, m.uid, m.name, COUNT(b.id) AS board_count의 결과가 들어있음
@@ -265,26 +347,6 @@ def member_stats():
     finally:
         conn.close()
 
-# # 활동 없는 회원 <보류>
-# @app.route('/admin/inactive_members')
-# def inactive_members():
-#
-#     if session.get('user_role') != 'admin':
-#         return "관리자만 접근 가능"
-#
-#     users = MemberService.get_inactive_members()
-#
-#     return render_template("inactive.html", users=users)
-
-
-# LEFT JOIN : 왼쪽 테이블은 다 가져오고, 연결되는 데이터만 붙이는 것
-# FROM 뒤에 먼저 나온게 기준 (왼쪽) -> # 여기서 왼쪽은 members(회원) 오른쪽은 boards(게시글)을 의미함
-# WHERE b.id IS NULL -> 게시글 없는 회원만 추출
-# LEFT JOIN boards b ON m.id = b.member_id
-# boards 테이블을 가져오는데 b라고 줄여 쓰겠다 / 회원 id(사람 번호) = 게시글 작성자 id (글 쓴 사람 번호)
-# inactive.html : Flask에서 화면(페이지) 역할 하는 HTML 파일
-# users = users  | HTML에서 쓸 이름 = Python에서 만든 데이터 -> HTML한테 데이터 전달하는 코드
-
 # 홈페이지 화면을 출력
 @app.route('/')
 def index():
@@ -293,4 +355,9 @@ def index():
 if __name__ == '__main__':
     #app.run(debug=True)
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+
+
+
 
