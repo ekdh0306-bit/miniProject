@@ -116,6 +116,41 @@ body, p, a, div, span, button {
 .data-value { color: #fff; font-weight: bold; }
 .status-tag { background: #00d1b2; padding: 4px 10px; border-radius: 5px; font-size: 0.9rem; color: #000; }
 
+
+/* --- AI 분석 로딩 스피너 스타일 --- */
+
+/* 1. 회전 애니메이션 정의 */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 2. 스피너 본체 스타일 */
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.1);
+    border-top: 5px solid #00d1b2; /* 리나님 사이트 포인트 컬러 */
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+/* 3. 로딩 컨테이너 정렬 */
+#loading-spinner {
+    display: none; /* 기본은 숨김 상태 */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    text-align: center;
+}
+
+#loading-spinner p {
+    margin: 5px 0;
+}
+
+
 /* 버튼들을 감싸는 영역 */
 .button-group {
     display: flex;

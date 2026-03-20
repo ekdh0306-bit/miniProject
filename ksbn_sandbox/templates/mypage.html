@@ -1,25 +1,7 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>내 정보 확인</title>
-    <link rel="stylesheet" href="../static/mainstyle.css">
-    <link rel="stylesheet" as="style" crossorigin
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"/>
-    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-<div class="top-nav">
-    <div class="nav-left">
-        <a href="/" class="nav-title">열린마당</a>
-    </div>
-    <div class="nav-right">
-        <a href="/mypage" class="nav-item active">마이페이지</a>
-        <a href="/board/upload" class="nav-item">분석 게시판</a>
-    </div>
-</div>
+{% extends "menu_layout.html" %}
+
+{% block content %}
+
 <div class="hero-container">
     <div class="hero-overlay"></div>
 
@@ -73,4 +55,4 @@
     </div>
 </div>
 </body>
-</html>
+{% endblock %}
