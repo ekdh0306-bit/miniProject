@@ -1,0 +1,62 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content"
+         style="max-width: 1200px; width: 95%; display: flex; flex-direction: row; align-items: stretch; gap: 40px; flex-wrap: wrap; justify-content: center; padding: 100px 0;">
+
+        <div class="register-card" style="flex: 1; max-width: 500px; min-width: 350px; display: flex; flex-direction: column; margin: 0;">
+            <h2 class="register-title"><a href="/" style="text-decoration: none; color: inherit;">내 정보 확인</a></h2>
+
+            <div class="input-group">
+                <label>아이디</label>
+                <input type="text" value="{{ user.uid }}" readonly>
+            </div>
+            <div class="input-group">
+                <label>이름</label>
+                <input type="text" value="{{ user.name }}" readonly>
+            </div>
+            <div class="input-group">
+                <label>이메일 주소</label>
+                <input type="text" value="{{ user.email }}" readonly>
+            </div>
+
+            <div class="button-group" style="flex-direction: column; gap: 10px; margin-top: auto; padding-top: 30px;">
+                <a href="/member/edit" class="hero-btn" style="width: 100%;">정보 수정하러 가기</a>
+                <a href="/" class="login-link" style="display: block; text-align: center;">메인으로 이동</a>
+            </div>
+        </div>
+
+        <div class="register-card" style="flex: 1; max-width: 500px; min-width: 350px; display: flex; flex-direction: column; margin: 0;">
+            <h3 class="register-title" style="font-size: 1.8rem; margin-bottom: 25px;">최근 분석 결과</h3>
+
+            <div class="result-list">
+                {% if analysis_results %}
+                    {% for result in analysis_results %}
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                        <a href="{{ url_for('analysis_detail', media_id=result.id) }}" style="text-decoration: none; color: inherit;">
+                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span class="status-tag" style="font-size: 0.75rem; background: #00d1b2; padding: 4px 8px; border-radius: 8px;">{{ result.status }}</span>
+                                <span style="font-size: 0.8rem; color: #aaa;">{{ result.uploaded_at.strftime('%Y-%m-%d') }}</span>
+                            </div>
+                            <p style="margin-top: 8px; font-size: 0.95rem; color: #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {{ result.memo or '메모 없음' }}
+                            </p>
+                        </a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding: 40px 0; text-align: center; color: rgba(255,255,255,0.4);">
+                        데이터가 없습니다.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+</body>
+{% endblock %}

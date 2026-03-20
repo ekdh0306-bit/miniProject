@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 분석 파일 업로드</title>
+</head>
+<body>
+    <h1>AI 분석을 위한 파일 업로드</h1>
+    <!-- 파일을 업로드하기 위한 폼입니다. ID를 부여하여 스크립트에서 참조할 수 있도록 합니다. -->
+    <form id="upload-form" enctype="multipart/form-data">
+        <input type="file" id="file-input" name="file">
+        <button type="submit">업로드 및 분석 시작</button>
+    </form>
+
+    <hr>
+    
+    <!-- 분석 상태와 결과를 표시할 영역입니다. -->
+    <h2>분석 상태</h2>
+    <div id="status-area">
+        <p>아직 분석을 시작하지 않았습니다.</p>
+    </div>
+
+    <script>
+        // 폼, 파일 입력, 상태 표시 영역의 DOM 요소를 가져옵니다.
+        const uploadForm = document.getElementById('upload-form');
+        const fileInput = document.getElementById('file-input');
+        const statusArea = document.getElementById('status-area');
+        
+        // Polling을 위한 setInterval 핸들을 저장할 변수입니다.
+        let pollingInterval;
+
+        // 폼 제출 이벤트를 처리하는 비동기 함수입니다.
+        uploadForm.addEventListener('submit', async (event) => {
+            // 기본 폼 제출 동작(페이지 새로고침)을 막습니다.
+            event.preventDefault();
+            
+            // 이전에 실행되던 폴링이 있다면 중지합니다.
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            const file = fileInput.files[0];
+            if (!file) {
+                statusArea.innerHTML = '<p style="color: red;">분석할 파일을 선택해주세요.</p>';
+                return;
+            }
+
+            // FormData 객체를 생성하여 파일을 담습니다.
+            const formData = new FormData();
+            formData.append('file', file);
+
+            statusArea.innerHTML = '<p>파일을 업로드하고 분석을 시작합니다...</p>';
+
+            try {
+                // fetch API를 사용하여 서버에 파일을 비동기적으로 POST 요청을 보냅니다.
+                const response = await fetch('/analysis', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'pending') {
+                    // 서버로부터 media_id를 성공적으로 받으면 폴링을 시작합니다.
+                    statusArea.innerHTML = `<p>파일 업로드 성공! (ID: ${data.media_id})... 분석 결과를 기다리는 중...</p>`;
+                    startPolling(data.media_id);
+                } else {
+                    // 서버에서 에러 응답이 오면 상태 영역에 메시지를 표시합니다.
+                    statusArea.innerHTML = `<p style="color: red;">업로드 실패: ${data.message}</p>`;
+                }
+            } catch (error) {
+                console.error('Error during upload:', error);
+                statusArea.innerHTML = '<p style="color: red;">업로드 중 네트워크 오류가 발생했습니다.</p>';
+            }
+        });
+
+        // 지정된 media_id에 대한 분석 상태를 주기적으로 확인하는 함수입니다.
+        function startPolling(mediaId) {
+            pollingInterval = setInterval(async () => {
+                try {
+                    // 2초마다 서버의 상태 확인 API를 호출합니다.
+                    const response = await fetch(`/api/analysis/status/${mediaId}`);
+                    const data = await response.json();
+
+                    if (data.status === 'SUCCESS') {
+                        // 분석이 성공하면 폴링을 중단하고 결과를 표시합니다.
+                        clearInterval(pollingInterval);
+                        statusArea.innerHTML = `
+                            <p style="color: green;">분석 완료!</p>
+                            <pre>${JSON.stringify(data.result, null, 2)}</pre>
+                        `;
+                    } else if (data.status === 'FAIL') {
+                        // 분석이 실패하면 폴링을 중단하고 에러 메시지를 표시합니다.
+                        clearInterval(pollingInterval);
+                        statusArea.innerHTML = '<p style="color: red;">분석에 실패했습니다.</p>';
+                    } else if (data.status === 'PENDING') {
+                        // 아직 분석 중이면 아무것도 변경하지 않고 다음 폴링을 기다립니다.
+                        console.log('Analysis is still pending...');
+                    }
+                } catch (error) {
+                    // 폴링 중 오류가 발생하면 폴링을 중단하고 에러를 콘솔에 출력합니다.
+                    console.error('Error during polling:', error);
+                    clearInterval(pollingInterval);
+                }
+            }, 2000); // 2초 간격
+        }
+    </script>
+</body>
+</html>
