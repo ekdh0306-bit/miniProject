@@ -1,0 +1,68 @@
+{% extends "menu_layout.html" %}
+{% block content %}
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content" style="position: relative; z-index: 2; width: 100%; padding-top: 120px; padding-bottom: 50px;">
+
+        <div class="register-card" style="max-width: 1000px; margin: 0 auto; background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+            <h2 style="color: #00d1b2; text-align: center; margin-bottom: 30px;">🔬 상세 분석 리포트</h2>
+
+            <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 300px;">
+                    <div id="view-media" style="width: 100%; border-radius: 15px; overflow: hidden; background: #000; min-height: 200px; display: flex; align-items: center; justify-content: center;"></div>
+                    <div style="margin-top: 20px;">
+                        <label style="color: #00d1b2; font-weight: bold;">📝 입력된 메모</label>
+                        <p id="view-memo" style="color: #ddd; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin-top: 10px; min-height: 50px; border: 1px solid rgba(255,255,255,0.05);"></p>
+                    </div>
+                </div>
+                <div style="flex: 1.5; min-width: 350px;">
+                    <label style="color: #00d1b2; font-size: 1.2rem; font-weight: bold;">📊 AI 분석 상세 결과</label>
+                    <div id="view-result" style="color: #eee; line-height: 1.8; background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; min-height: 400px; margin-top: 15px; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.05);"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 40px; text-align: center; display: flex; flex-direction: column; gap: 15px; align-items: center;">
+
+                <div style="display: flex; gap: 15px; justify-content: center; width: 100%;">
+                    <button onclick="location.href='/analyze/list'" class="hero-btn"
+                            style="background: #00d1b2; color: black; min-width: 200px; font-weight: bold; border: none;">
+                        📋 전체 분석 목록
+                    </button>
+                    <button onclick="history.back()" class="hero-btn"
+                            style="background: rgba(255,255,255,0.1); color: white; border: none; min-width: 200px;">
+                        ⬅️ 다시 분석하기
+                    </button>
+                </div>
+
+                <button onclick="location.href='/analyze'" class="hero-btn"
+                        style="background: transparent; color: #00d1b2; border: 1px solid #00d1b2; min-width: 415px; font-weight: bold;">
+                    ➕ 새 분석 시작하기
+                </button>
+
+            </div>
+            </div>
+    </div>
+</div>
+
+<script>
+    // [기존 스크립트 유지]
+    window.onload = function() {
+        const rawData = localStorage.getItem('temp_analysis_data');
+        if (!rawData) {
+            alert("데이터가 없습니다. 메인으로 돌아갑니다.");
+            location.href = "/";
+            return;
+        }
+        const data = JSON.parse(rawData);
+        const mediaContainer = document.getElementById('view-media');
+        if (data.type === 'image') {
+            mediaContainer.innerHTML = `<img src="${data.mediaSrc}" style="width:100%; height: auto; display: block;">`;
+        } else {
+            mediaContainer.innerHTML = `<video src="${data.mediaSrc}" controls style="width:100%; height: auto; display: block;"></video>`;
+        }
+        document.getElementById('view-memo').innerText = data.memo || "작성된 메모가 없습니다.";
+        document.getElementById('view-result').innerText = data.result;
+    };
+</script>
+{% endblock %}

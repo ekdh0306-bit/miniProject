@@ -1,0 +1,90 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container" style="min-height: 100vh; height: auto; padding-bottom: 80px;">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+        <div class="list-header"
+             style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; padding: 0 20px;">
+            <h2 class="register-title" style="margin: 0; color: #00d1b2; font-size: 1.8rem;">🔬 분석 히스토리</h2>
+            <p style="color: rgba(255,255,255,0.5); margin: 0;">지금까지 분석한 총 <span style="color:#00d1b2;">{{ analyze_list|length }}</span>개의
+                리포트가 있습니다.</p>
+        </div>
+
+        <div class="analysis-grid"
+             style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 0 20px;">
+            {% for item in analyze_list %}
+            <div class="register-card"
+                 style="position: relative; cursor: pointer; transition: 0.3s; margin: 0; padding: 30px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); backdrop-filter: blur(5px); border-radius: 20px;"
+                 {# 💡 데이터를 HTML 태그 안에 숨겨둡니다 (SyntaxError 방지) #}
+                 data-type="{{ item.file_type }}"
+                 data-path="{{ item.file_path }}"
+                 data-memo="{{ item.description or '' }}"
+                 data-result="{{ item.result_json or item.analysis_result or '{}' }}"
+                 onclick="handleCardClick(this)">
+
+                <button onclick="deleteHistory(event, '{{ item.id }}')"
+                        style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 1.1rem; z-index: 10;">
+                    🗑️
+                </button>
+
+                <h3 style="color: #00d1b2; margin-bottom: 15px; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.description or '제목 없음' }}</h3>
+
+                <div class="list-info">
+                    <p style="color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 15px;">
+                        📅 분석일: {{ item.created_at or '날짜 정보 없음' }}
+                    </p>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.75rem; color: #00d1b2; background: rgba(0,209,178,0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(0,209,178,0.3);">
+                    {{ '분석 완료' if item.status in ['done', 'SUCCESS'] else '분석 중' }}
+                </span>
+                        <span style="color: #00d1b2; font-weight: bold; font-size: 0.9rem;">리포트 보기 →</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="list-footer" style="margin-top: 60px; text-align: center;">
+            <button onclick="location.href='/analyze'" class="hero-btn" style="background: #00d1b2; color: black;">➕ 새
+                분석 시작하기
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function goToDetail(type, src, memo, result) {
+        const finalResult = (typeof result === 'object') ? JSON.stringify(result) : result;
+
+        const data = {
+            type: type,
+            mediaSrc: src,
+            memo: memo,
+            result: finalResult
+        };
+        localStorage.setItem('temp_analysis_data', JSON.stringify(data));
+        location.href = '/analyze/analysis';
+    }
+
+    function deleteHistory(event, mediaId) {
+        event.stopPropagation();
+
+        if (!mediaId || mediaId === '' || mediaId === 'None') {
+            alert("삭제할 수 없는 항목입니다. (ID 누락)");
+            return;
+        }
+
+        if (!confirm("이 분석 기록을 정말 삭제하시겠습니까?")) {
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/media/delete/${mediaId}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+</script>
+{% endblock %}
