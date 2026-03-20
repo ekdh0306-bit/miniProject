@@ -92,76 +92,9 @@ class MediafileService:
         finally:
             conn.close()
 
-    @staticmethod
-    def media_file_update(media_id, user_id, new_file, upload_folder):
-        """실제 파일 교체 + DB 정보 갱신 """
-        if not new_file or new_file.filename == '':
-            return False
-
-        conn = Session.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                # 1. 기존 파일 정보 가져오기 (삭제를 위해)
-                sql_select = "SELECT stored_path FROM media_files WHERE id = %s AND member_id = %s"
-                cursor.execute(sql_select, (media_id, user_id))
-                old_row = cursor.fetchone()
-
-                if not old_row:
-                    return False  # 권한 없음 혹은 파일 없음
-
-                old_file_path = old_row['stored_path']
-
-                # 2. 새 파일 물리적 저장
-                new_safe_filename = secure_filename(new_file.filename)
-                new_filename = f"{uuid.uuid4().hex}_{new_safe_filename}"
-                new_stored_path = os.path.join(upload_folder, new_filename)
-
-                # 파일명이 겹칠 경우를 대비해 저장 전 체크 (필요시 이름 변경 로직 추가 가능)
-                new_file.save(new_stored_path)
-
-                # 3. DB 정보 업데이트 (파일 정보 수정 + 분석 상태 초기화)
-                file_type = 'IMAGE' if new_filename.split('.')[-1].lower() in ['jpg', 'jpeg', 'png', 'gif'] else 'VIDEO'
-
-                # media_files 정보 갱신
-                sql_update_file = """
-                        UPDATE media_files 
-                        SET file_name = %s, stored_path = %s, file_type = %s 
-                        WHERE id = %s AND member_id = %s
-                    """
-                cursor.execute(sql_update_file, (new_filename, new_stored_path, file_type, media_id, user_id))
-
-                # 분석 결과를 초기화한다.
-                sql_reset_analysis = """
-                        UPDATE analysis_results 
-                        SET status = 'PENDING', result_json = NULL 
-                        WHERE media_id = %s
-                    """
-                cursor.execute(sql_reset_analysis, (media_id,))
-
-                conn.commit()
-
-                # 4. 이전 물리 파일 삭제 (DB 업데이트 성공 후에 지우는 것이 안전함)
-                # 만약 새 파일과 예전 파일의 경로가 같다면 지우면 안 됨!
-                if old_file_path != new_stored_path and os.path.exists(old_file_path):
-                    os.remove(old_file_path)
-
-                # 5. 새 파일에 대해 AI 분석 다시 시작
-                thread = threading.Thread(
-                    target=MediafileService.simulate_ai_analysis,
-                    args=(media_id,),
-                    daemon=True
-                )
-                thread.start()
-
-                return True
-
-        except Exception as e:
-            conn.rollback()
-            print(f"파일 교체 중 오류 발생: {e}")
-            raise e
 
     @staticmethod
-    def delete_mediafile(media_id, user_id):
+    def mediafile_delete(media_id, user_id):
         """
         1. DB에서 파일 경로 확인 및 소유권 검증
         2. DB 데이터 삭제 (성공 시 Commit)

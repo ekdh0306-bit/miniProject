@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from flask import Flask, render_template, request, url_for, redirect,  session,  jsonify
+from flask import Flask, render_template, request, url_for, redirect,  session,  jsonify,send_from_directory
 
 from LMS.service import MediafileService, MediaBoardService
 from LMS.service import AnalyzeresultService
@@ -112,14 +112,59 @@ def member_edit():
         print(f'치명적 오류 발생{e}')
         return redirect(url_for('login'))
 
+
 @app.route('/mypage')
 def mypage():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    user_info = MemberService.get_user_info(session['user_id'])
+    user_id = session['user_id']
 
-    return render_template('mypage.html', user=user_info)
+    # ==========================================
+    # 1. 내 정보 가져오기
+    # ==========================================
+    user_info = MemberService.get_user_info(user_id)
+
+    # ==========================================
+    # 2. 최근 분석 결과 마이페이지에 가져오기
+    # ==========================================
+    all_boards = MediaBoardService.get_analyze_list(user_id)
+    recent_results = []
+
+    for board in all_boards[:5]:
+
+        score = 0
+        summary = board.get('description') or board.get('file_type') or "제목 없음"
+
+        date_str = board.get('uploaded_at', '최근')[:10]
+
+        if board.get('status') == 'done':
+            res_json = board.get('analysis_result')
+
+            # JSON 문자열이라면 딕셔너리로 변환
+            if isinstance(res_json, str) and res_json != "분석 중입니다.":
+                try:
+                    res_json = json.loads(res_json)
+                except Exception as e:
+                    print(f"JSON : {e}")
+
+            # 딕셔너리에서 객체와 신뢰도(점수) 가져오기
+            if isinstance(res_json, dict) and 'objects' in res_json:
+                objects = res_json['objects']
+                if len(objects) > 0:
+                    score = int(objects[0].get('score', 0) * 100)  # 0.95 -> 95
+                    summary = f"{objects[0].get('label')} 탐지됨"  # "cat 탐지됨"
+
+        recent_results.append({
+            "date": date_str,
+            "summary": summary,
+            "score": score
+        })
+
+    # print(f" 내 정보: {user_info}")
+    # print(f" 최근 분석: {recent_results}")
+
+    return render_template('mypage.html', user=user_info, analysis_results=recent_results)
 
 # 회원 탈퇴 로직
 @app.route('/member/delete/<int:user_id>', methods=['GET'])
@@ -210,33 +255,19 @@ def get_analysis_status(media_id):
 def analysis_detail():
     return render_template('analyze_analysis.html')  # 상세보기 페이지
 
-
-@app.route('/media/update/<int:media_id>', methods=['POST'])
-def file_update(media_id):
-    if 'user_id' not in session:
-        return jsonify({"status": "error", "message": "Login required"}), 401
-
-    new_file = request.files.get('file')  # 폼에서 보낸 파일 객체
-
-    if MediafileService.media_file_update(media_id, session['user_id'], new_file, app.config['UPLOAD_FOLDER']):
-        return jsonify({"status": "success", "message": "파일이 교체되어 다시 분석을 시작합니다."})
-    else:
-        return jsonify({"status": "error", "message": "파일 교체를 실패하였습니다"}), 400
-
-
 @app.route('/media/delete/<int:media_id>', methods=['POST'])
-def delete_media_file(media_id):
+def mediafile_delete(media_id):
 
     if 'user_id' not in session:
         return "<script>alert('로그인이 필요한 서비스입니다.'); location.href='/login';</script>"
 
     try:
         # 1. 서비스 호출 (DB + 물리 파일 삭제 수행)
-        success = MediafileService.delete_mediafile(media_id, session['user_id'])
+        success = MediafileService.mediafile_delete(media_id, session['user_id'])
 
         if success:
             # 삭제 성공 시 분석 리스트 페이지로 이동
-            return "<script>alert('파일과 분석 결과가 서버에서 완전히 삭제되었습니다.'); location.href='/analysis/list';</script>"
+            return "<script>alert('파일과 분석 결과가 서버에서 완전히 삭제되었습니다.'); location.href='/analyze/list';</script>"
         else:
             # 삭제를 실패할 경우 이전 페이지로
             return "<script>alert('삭제 권한이 없거나 이미 존재하지 않는 파일입니다.'); history.back();</script>"
@@ -246,16 +277,24 @@ def delete_media_file(media_id):
         print(f"파일 삭제 오류: {e}")
         return "<script>alert('오류로 인해 삭제를 실패하였습니다.'); history.back();</script>"
 
-@app.route('/analysis/list')
-def analysis_list():
+@app.route('/uploads/<filename>')
+def upload_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/analyze/list')
+def analyze_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    # MediaBoard 객체들이 담긴 리스트를 가져옵니다.
-    analysis_list = MediaBoardService.get_analyze_list(session['user_id'])
+    analyze_list_data = MediaBoardService.get_analyze_list(session['user_id'])
 
-    # 템플릿으로 전달
-    return render_template('analyze_list.html', analysis_list=analysis_list)
+    return render_template('analyze_list.html', analyze_list=analyze_list_data)
+
+@app.route('/analyze/analysis/')
+def analyze_detail():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('analyze_analysis.html')
 
 @app.route('/')
 def index():

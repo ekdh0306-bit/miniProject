@@ -9,7 +9,7 @@ class MediaBoardService:
         try:
             with conn.cursor() as cursor:
                 """ ID 충돌 방지를 위해 별칭(Alias)을 사용한다. 이유는
-                MediaFile.from_db와 AnalysisResult.from_db가 'id'라는 키를 찾기 때문
+                MediaFile.from_db와 AnalyzeResult.from_db가 'id'라는 키를 찾기 때문
                 """
                 sql = """
                     SELECT 
@@ -20,12 +20,13 @@ class MediaBoardService:
                     FROM media_files m
                     LEFT JOIN analysis_results r ON m.id = r.media_id
                     WHERE m.member_id = %s
-                    ORDER BY m.created_at DESC
+
                 """
                 cursor.execute(sql, (user_id,))
                 rows = cursor.fetchall()
 
+                boards = [MediaBoard.from_join(row) for row in rows]
+                return [board.to_front_dict() for board in boards]
 
-                return [MediaBoard.from_join(row) for row in rows]
         finally:
             conn.close()
