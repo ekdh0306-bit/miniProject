@@ -12,15 +12,28 @@
 
             <div style="display: flex; gap: 30px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 300px;">
-                    <div id="view-media" style="width: 100%; border-radius: 15px; overflow: hidden; background: #000; min-height: 200px; display: flex; align-items: center; justify-content: center;"></div>
+                    <div id="view-media" style="width: 100%; border-radius: 15px; overflow: hidden; background: #000; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+                        {% if analysis_data %}
+                            {% set filename = analysis_data.stored_path.split('/')[-1].split('\\')[-1] %}
+                            {% if analysis_data.file_type == 'IMAGE' %}
+                                <img src="{{ url_for('uploaded_file', filename=filename) }}" style="width:100%; height: auto; display: block;">
+                            {% elif analysis_data.file_type == 'VIDEO' %}
+                                <video src="{{ url_for('uploaded_file', filename=filename) }}" controls style="width:100%; height: auto; display: block;"></video>
+                            {% else %}
+                                <p>미리보기를 지원하지 않는 파일 형식입니다.</p>
+                            {% endif %}
+                        {% else %}
+                            <p>미디어 파일을 불러올 수 없습니다.</p>
+                        {% endif %}
+                    </div>
                     <div style="margin-top: 20px;">
                         <label style="color: #00d1b2; font-weight: bold;">📝 입력된 메모</label>
-                        <p id="view-memo" style="color: #ddd; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin-top: 10px; min-height: 50px; border: 1px solid rgba(255,255,255,0.05);"></p>
+                        <p id="view-memo" style="color: #ddd; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin-top: 10px; min-height: 50px; border: 1px solid rgba(255,255,255,0.05);">{{ analysis_data.memo or "작성된 메모가 없습니다." }}</p>
                     </div>
                 </div>
                 <div style="flex: 1.5; min-width: 350px;">
                     <label style="color: #00d1b2; font-size: 1.2rem; font-weight: bold;">📊 AI 분석 상세 결과</label>
-                    <div id="view-result" style="color: #eee; line-height: 1.8; background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; min-height: 400px; margin-top: 15px; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.05);"></div>
+                    <div id="view-result" style="color: #eee; line-height: 1.8; background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; min-height: 400px; margin-top: 15px; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.05);">{{ analysis_data.formatted_result or "분석 결과가 없거나 처리 중입니다." }}</div>
                 </div>
             </div>
 
@@ -47,35 +60,5 @@
     </div>
 </div>
 
-<script>
-    window.onload = function() {
-        const rawData = localStorage.getItem('temp_analysis_data');
-        if (!rawData) {
-            alert("데이터가 없습니다. 메인으로 돌아갑니다.");
-            location.href = "/";
-            return;
-        }
-
-        const data = JSON.parse(rawData);
-        console.log("전달받은 데이터 확인:", data); // 💡 F12 콘솔에서 type이 정확히 뭔지 확인 가능합니다.
-
-        const mediaContainer = document.getElementById('view-media');
-
-        // 1. type이 'image'이거나, 파일 경로에 이미지 확장자가 포함되어 있는지 체크
-        const isImage = (data.type && data.type.toLowerCase().includes('image')) ||
-                        /\.(jpg|jpeg|png|gif|webp)$/i.test(data.mediaSrc);
-
-        if (isImage) {
-            // 이미지로 렌더링
-            mediaContainer.innerHTML = `<img src="${data.mediaSrc}" style="width:100%; max-height: 500px; object-fit: contain; display: block;">`;
-        } else {
-            // 비디오로 렌더링
-            mediaContainer.innerHTML = `<video src="${data.mediaSrc}" controls style="width:100%; max-height: 500px; display: block;"></video>`;
-        }
-
-        document.getElementById('view-memo').innerText = data.memo || "작성된 메모가 없습니다.";
-        document.getElementById('view-result').innerText = data.result;
-    };
 </script>
-
 {% endblock %}

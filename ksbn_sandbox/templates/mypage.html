@@ -37,11 +37,15 @@
                 {% if analysis_results %}
                     {% for result in analysis_results %}
                     <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
-                        <span class="status-tag" style="font-size: 0.75rem; background: #00d1b2;">{{ result.date }}</span>
-                        <p style="margin-top: 8px; font-size: 0.95rem; color: #eee;">
-                            {{ result.summary }}
-                            <span class="data-value" style="float: right; color: #fff;">{{ result.score }}점</span>
-                        </p>
+                        <a href="{{ url_for('analysis_detail', media_id=result.id) }}" style="text-decoration: none; color: inherit;">
+                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span class="status-tag" style="font-size: 0.75rem; background: #00d1b2; padding: 4px 8px; border-radius: 8px;">{{ result.status }}</span>
+                                <span style="font-size: 0.8rem; color: #aaa;">{{ result.uploaded_at.strftime('%Y-%m-%d') }}</span>
+                            </div>
+                            <p style="margin-top: 8px; font-size: 0.95rem; color: #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {{ result.memo or '메모 없음' }}
+                            </p>
+                        </a>
                     </div>
                     {% endfor %}
                 {% else %}

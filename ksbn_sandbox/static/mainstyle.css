@@ -575,7 +575,7 @@ body, p, a, div, span, button {
 .logged-out-content {
     justify-content: center !important; /* 메시지를 화면 정중앙에 배치 */
     padding-top: 0 !important;          /* 상단 여백 제거 */
-    height: 100vh;
+    height: auto !important;
 }
 
 /* 모바일 대응 (768px 이하) */
