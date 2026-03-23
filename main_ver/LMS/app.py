@@ -8,14 +8,13 @@ from flask import Flask, render_template, request, url_for, redirect, session, j
 
 from common.Session import Session
 
-
-
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
+
 
 # ===============================================
 # Helper Functions (Used by multiple routes or as dependencies)
@@ -30,6 +29,7 @@ def get_user_info(user_id):
             return row
     finally:
         conn.close()
+
 
 def simulate_ai_analysis(media_id):
     print(f"[{media_id}] AI 분석 시작...")
@@ -51,6 +51,7 @@ def simulate_ai_analysis(media_id):
         print(f"[{media_id}] 분석 오류: {e}")
     finally:
         conn.close()
+
 
 def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
     filename = secure_filename(file.filename)
@@ -87,6 +88,7 @@ def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
     finally:
         conn.close()
 
+
 def get_status(media_id):
     conn = Session.get_connection()
     try:
@@ -101,6 +103,7 @@ def get_status(media_id):
     finally:
         conn.close()
 
+
 # ===============================================
 # Flask Routes
 # ===============================================
@@ -113,6 +116,7 @@ def file_too_large(e):
     else:
         max_size = f"{max_bytes // (1024 * 1024)}MB"
     return jsonify({"status": "error", "message": f"업로드 가능한 최대 용량({max_size})을 초과했습니다."}), 413
+
 
 @app.route('/join', methods=['GET', 'POST'])
 def join():
@@ -187,10 +191,12 @@ def login():
         print(e)
         return render_template('login.html', error="치명적 오류 발생, 다시 시도해주세요")
 
+
 @app.route('/logout')
 def logout():
     session.clear()
     return "<script>alert('로그아웃을 성공했습니다!'); location.href='/';</script>"
+
 
 @app.route('/member/edit', methods=['GET', 'POST'])
 def member_edit():
@@ -230,11 +236,12 @@ def member_edit():
             session['user_name'] = new_name
             return "<script>alert('회원정보 수정을 완료했습니다.'); location.href = '/mypage';</script>"
         else:
-             return "수정 도중 오류가 발생했습니다."
+            return "수정 도중 오류가 발생했습니다."
 
     except Exception as e:
         print(f'치명적 오류 발생{e}')
         return redirect(url_for('login'))
+
 
 @app.route('/mypage')
 def mypage():
@@ -264,6 +271,7 @@ def mypage():
         conn.close()
 
     return render_template('mypage.html', user=user_info, analysis_results=analysis_results)
+
 
 @app.route('/member/delete/<int:user_id>', methods=['GET'])
 def member_delete_route(user_id):
@@ -306,6 +314,7 @@ def analyze():
             return jsonify({"status": "error", "message": str(e)}), 500
     return render_template('analyze.html')
 
+
 @app.route('/analyze/result', methods=['POST'])
 def analyze_result():
     if 'user_id' not in session:
@@ -331,6 +340,7 @@ def analyze_result():
     except Exception as e:
         print(f"업로드 오류: {e}")
         return jsonify({"status": "error", "message": "서버 오류가 발생했습니다."}), 500
+
 
 @app.route('/api/analysis/status/<int:media_id>')
 def get_analysis_status(media_id):
@@ -363,6 +373,7 @@ def get_analysis_status(media_id):
         })
     return jsonify({"status": "not_found"}), 404
 
+
 @app.route('/analyze/analysis/<int:media_id>')
 def analysis_detail(media_id):
     if 'user_id' not in session:
@@ -390,7 +401,7 @@ def analysis_detail(media_id):
                 # 이렇게 해야 템플릿이나 다른 로직에서 쉽게 접근할 수 있습니다.
                 if isinstance(analysis_data['result_json'], str):
                     analysis_data['result_json'] = json.loads(analysis_data['result_json'])
-                
+
                 # AI 분석 결과(result_json)를 사람이 읽기 좋은 형태의 문자열로 가공합니다.
                 # 상세 페이지에서 복잡한 JSON 객체 대신 깔끔하게 포맷된 텍스트를 보여주기 위함입니다.
                 try:
@@ -398,7 +409,7 @@ def analysis_detail(media_id):
                     if not objects:
                         formatted_text = "검출된 객체가 없습니다."
                     else:
-                        lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)" 
+                        lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)"
                                  for i, obj in enumerate(objects, 1)]
                         formatted_text = "\n".join(lines)
                     analysis_data['formatted_result'] = formatted_text
@@ -414,6 +425,7 @@ def analysis_detail(media_id):
         return "분석 데이터를 찾을 수 없거나 접근 권한이 없습니다.", 404
 
     return render_template('analyze_analysis.html', analysis_data=analysis_data)
+
 
 @app.route('/media/update/<int:media_id>', methods=['POST'])
 def file_update(media_id):
@@ -439,7 +451,8 @@ def file_update(media_id):
                 new_file.save(new_stored_path)
                 file_type = 'IMAGE' if new_filename.split('.')[-1].lower() in ['jpg', 'jpeg', 'png', 'gif'] else 'VIDEO'
                 sql_update_file = "UPDATE media_files SET file_name = %s, stored_path = %s, file_type = %s WHERE id = %s AND member_id = %s"
-                cursor.execute(sql_update_file, (new_filename, new_stored_path, file_type, media_id, session['user_id']))
+                cursor.execute(sql_update_file,
+                               (new_filename, new_stored_path, file_type, media_id, session['user_id']))
                 sql_reset_analysis = "UPDATE analysis_results SET status = 'PENDING', result_json = NULL WHERE media_id = %s"
                 cursor.execute(sql_reset_analysis, (media_id,))
                 conn.commit()
@@ -459,6 +472,7 @@ def file_update(media_id):
     else:
         return jsonify({"status": "error", "message": "파일 교체를 실패하였습니다"}), 400
 
+
 @app.route('/media/delete/<int:media_id>', methods=['POST'])
 def delete_media_file(media_id):
     if 'user_id' not in session:
@@ -474,7 +488,8 @@ def delete_media_file(media_id):
             if row:
                 file_path = os.path.abspath(row['stored_path'])
                 cursor.execute("DELETE FROM analysis_results WHERE media_id = %s", (media_id,))
-                cursor.execute("DELETE FROM media_files WHERE id = %s AND member_id = %s", (media_id, session['user_id']))
+                cursor.execute("DELETE FROM media_files WHERE id = %s AND member_id = %s",
+                               (media_id, session['user_id']))
                 conn.commit()
                 if os.path.exists(file_path):
                     try:
@@ -518,9 +533,11 @@ def analyze_list():
         conn.close()
     return render_template('analyze_list.html', analyze_list=analysis_list_data)
 
+
 @app.route('/')
 def index():
     return render_template('main.html')
+
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
