@@ -19,6 +19,7 @@
                  data-path="{{ item.stored_path }}"
                  data-memo="{{ item.memo or '' }}"
                  data-result="{{ item.result_json or '{}' }}"
+                 data-id="{{ item.id }}"
                  onclick="handleCardClick(this)">
 
                 <button onclick="deleteHistory(event, '{{ item.id }}')"
@@ -50,22 +51,14 @@
 </div>
 
 <script>
-    // 💡 HTML에서 호출하는 이름과 똑같이 function 이름을 맞췄습니다!
     function handleCardClick(element) {
-        const type = element.getAttribute('data-type');
-        const src = element.getAttribute('data-path');
-        const memo = element.getAttribute('data-memo');
-        const result = element.getAttribute('data-result');
-
-        const data = {
-            type: type,
-            mediaSrc: src,
-            memo: memo,
-            result: result
-        };
-
-        localStorage.setItem('temp_analysis_data', JSON.stringify(data));
-        location.href = '/analyze/analysis';
+        const mediaId = element.getAttribute('data-id');
+        if (mediaId) {
+            location.href = `/analyze/analysis/${mediaId}`;
+        } else {
+            console.error('Media ID not found!');
+            alert('분석 상세 정보로 이동할 수 없습니다.');
+        }
     }
 
     function deleteHistory(event, mediaId) {

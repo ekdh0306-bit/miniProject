@@ -415,6 +415,7 @@ def analysis_detail(media_id):
 
     return render_template('analyze_analysis.html', analysis_data=analysis_data)
 
+"""
 @app.route('/media/update/<int:media_id>', methods=['POST'])
 def file_update(media_id):
     if 'user_id' not in session:
@@ -458,6 +459,7 @@ def file_update(media_id):
         return jsonify({"status": "success", "message": "파일이 교체되어 다시 분석을 시작합니다."})
     else:
         return jsonify({"status": "error", "message": "파일 교체를 실패하였습니다"}), 400
+"""
 
 @app.route('/media/delete/<int:media_id>', methods=['POST'])
 def delete_media_file(media_id):
