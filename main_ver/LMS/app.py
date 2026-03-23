@@ -720,6 +720,13 @@ def analyze_list():
         conn.close()
     return render_template('analyze_list.html', analyze_list=analysis_list_data)
 
+
+
+@app.route('/introduce')
+def introduce():
+    return render_template('introduce.html')
+
+
 @app.route('/')
 def index():
     return render_template('main.html')
