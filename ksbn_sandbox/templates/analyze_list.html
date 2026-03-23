@@ -27,35 +27,38 @@
                  data-id="{{ item.id }}"
                  onclick="handleCardClick(this)">
 
-                {# 📸 썸네일 영역 추가 #}
+                {# 썸네일 영역 #}
                 <div class="thumbnail-box"
                      style="width: 100%; height: 200px; background: #000; overflow: hidden; position: relative;">
                     {% if item.stored_path %}
-                    {# 💡 핵심: 전체 경로에서 파일명만 추출합니다 (역슬래시와 슬래시 모두 대응) #}
                     {% set filename = item.stored_path.split('/')[-1].split('\\')[-1] %}
-
-                    {# 💡 서버의 업로드 경로와 파일명을 합칩니다. #}
-                    {# 만약 업로드 폴더가 static/uploads 라면 아래처럼 작성하세요 #}
                     {% set thumb_url = '/uploads/' + filename %}
 
                     {% if item.file_type|upper == 'IMAGE' %}
                     <img src="{{ thumb_url }}"
                          style="width: 100%; height: 100%; object-fit: cover;"
                          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-
                     <div style="display:none; width: 100%; height: 100%; background: #222; align-items: center; justify-content: center; color: #555;">
                         Image Not Found
                     </div>
+
                     {% elif item.file_type|upper == 'VIDEO' %}
-                    <div style="width: 100%; height: 100%; background: #1a1a1a; display: flex; align-items: center; justify-content: center;">
-                        <span style="font-size: 2.5rem;">🎥</span>
+                    <div style="width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center;">
+                        <video src="{{ thumb_url }}#t=0.1"
+                               style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;">
+                        </video>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.7;">
+                            <span style="font-size: 2rem;">▶️</span>
+                        </div>
                     </div>
-                    {% endif %}
+                    {% endif %} {# 💡 file_type 체크 종료 #}
+
                     {% else %}
+                    {# 💡 stored_path가 없을 때 #}
                     <div style="width: 100%; height: 100%; background: #222; display: flex; align-items: center; justify-content: center; color: #555;">
                         No Data
                     </div>
-                    {% endif %}
+                    {% endif %} {# 💡 stored_path 체크 종료 #}
                 </div>
 
                 {# 🗑️ 삭제 버튼 (위치 조정) #}
