@@ -1,3 +1,2 @@
-from LMS.common.Session import Session
+from LMS.common import Session
 __all__ = ["Session"]
-

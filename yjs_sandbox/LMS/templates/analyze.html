@@ -53,7 +53,7 @@
 
                     <div class="input-group" style="margin-top: 20px;">
                         <label>메모</label>
-                        <input type="text" name="description" id="description" placeholder="설명 입력...">
+                        <textarea name="description" id="description" placeholder="설명 입력..."></textarea>
                     </div>
 
                     <button type="button" onclick="uploadFileWithProgress()" class="hero-btn"
@@ -147,36 +147,31 @@
         else formData.delete('image_file');
 
         const xhr = new XMLHttpRequest(); // 💡 이 부분이 꼭 있어야 해요!
-        xhr.open('POST', '/board/result', true);
+        xhr.open('POST', '/analyze/result', true);
 
 xhr.onload = function() {
     spinner.style.display = 'none';
     if (xhr.status === 200) {
         try {
             const response = JSON.parse(xhr.responseText);
-            console.log("서버 응답 데이터:", response); // 💡 F12 콘솔에서 데이터 이름을 확인해보세요!
-
-            // 1. 여러 이름 후보 중 데이터가 있는 것을 선택 (analysis_result, result, formatted 등)
-            let resultData = response.analysis_result || response.result || response.formatted || "분석 데이터를 찾을 수 없습니다.";
-
-            // 2. 만약 데이터가 객체(Object)라면 예쁘게 문자열로 변환
-            if (typeof resultData === 'object') {
-                resultData = JSON.stringify(resultData, null, 2);
+            if (response.status === 'success' && response.media_id) {
+                // 분석에 성공하고 media_id가 반환된 경우, 해당 상세 페이지로 이동합니다.
+                // 이 로직은 사용자가 분석 결과를 즉시 확인하고 다음 행동으로 자연스럽게 이어지도록 돕습니다.
+                window.location.href = '/analyze/analysis/' + response.media_id;
+            } else {
+                // 서버에서 'success' 상태가 아니거나 media_id가 없는 경우,
+                // 사용자에게 실패 메시지를 명확하게 전달합니다.
+                placeholder.style.display = 'flex';
+                alert(response.message || "분석 결과를 가져오는 데 실패했습니다.");
             }
-
-            resultContent.style.display = 'block';
-            document.getElementById('res-detail').innerText = resultData;
-
-            // 상태 표시 업데이트 (있을 경우)
-            const resStatus = document.getElementById('res-status');
-            if(resStatus) resStatus.innerText = response.status || "완료";
-
         } catch (e) {
             console.error("결과 처리 중 에러:", e);
-            alert("응답 데이터를 처리하는 중 오류가 발생했습니다.");
             placeholder.style.display = 'flex';
+            alert("응답 데이터를 처리하는 중 오류가 발생했습니다.");
         }
     } else {
+        // 서버 연결 자체가 실패한 경우, 네트워크 상태나 서버 상태를 확인할 수 있도록
+        // HTTP 상태 코드와 함께 에러 메시지를 표시합니다.
         placeholder.style.display = 'flex';
         alert("서버 연결 실패 (에러 코드: " + xhr.status + ")");
     }

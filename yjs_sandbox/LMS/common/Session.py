@@ -7,7 +7,7 @@ class Session:
     def get_connection():
         return pymysql.connect(
             host='192.168.0.173',
-            user='yjs',
+            user='ksbl',
             password='1234',
             db='miniproject',
             charset='utf8mb4',

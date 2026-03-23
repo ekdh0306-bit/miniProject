@@ -16,23 +16,22 @@
                  style="position: relative; cursor: pointer; transition: 0.3s; margin: 0; padding: 30px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); backdrop-filter: blur(5px); border-radius: 20px;"
                  {# 💡 데이터 속성 이름을 정리합니다 #}
                  data-type="{{ item.file_type }}"
-                 data-path="{{ item.file_path }}"
-                 data-memo="{{ item.description or '' }}"
-                 data-result="{{ item.result_json or item.analysis_result or '{}' }}"
+                 data-path="{{ item.stored_path }}"
+                 data-memo="{{ item.memo or '' }}"
+                 data-result="{{ item.result_json or '{}' }}"
+                 data-id="{{ item.id }}"
                  onclick="handleCardClick(this)">
 
-                {# 💡 ID가 없을 경우 item.analysis_id 등 다른 필드도 확인하도록 수정 #}
-                {% set media_id = item.id or item.analysis_id %}
-                <button onclick="deleteHistory(event, '{{ media_id }}')"
+                <button onclick="deleteHistory(event, '{{ item.id }}')"
                         style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 1.1rem; z-index: 10;">
                     🗑️
                 </button>
 
-                <h3 style="color: #00d1b2; margin-bottom: 15px; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px;">{{ item.description or '제목 없음' }}</h3>
+                <h3 style="color: #00d1b2; margin-bottom: 15px; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px;">{{ item.memo or '제목 없음' }}</h3>
 
                 <div class="list-info">
                     <p style="color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 15px;">
-                        📅 분석일: {{ item.created_at or '날짜 정보 없음' }}
+                        📅 분석일: {{ item.uploaded_at or '날짜 정보 없음' }}
                     </p>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-size: 0.75rem; color: #00d1b2; background: rgba(0,209,178,0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(0,209,178,0.3);">
@@ -52,22 +51,14 @@
 </div>
 
 <script>
-    // 💡 HTML에서 호출하는 이름과 똑같이 function 이름을 맞췄습니다!
     function handleCardClick(element) {
-        const type = element.getAttribute('data-type');
-        const src = element.getAttribute('data-path');
-        const memo = element.getAttribute('data-memo');
-        const result = element.getAttribute('data-result');
-
-        const data = {
-            type: type,
-            mediaSrc: src,
-            memo: memo,
-            result: result
-        };
-
-        localStorage.setItem('temp_analysis_data', JSON.stringify(data));
-        location.href = '/analyze/analysis';
+        const mediaId = element.getAttribute('data-id');
+        if (mediaId) {
+            location.href = `/analyze/analysis/${mediaId}`;
+        } else {
+            console.error('Media ID not found!');
+            alert('분석 상세 정보로 이동할 수 없습니다.');
+        }
     }
 
     function deleteHistory(event, mediaId) {
