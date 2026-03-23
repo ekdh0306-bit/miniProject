@@ -3,6 +3,8 @@ import json
 import time
 import threading
 import uuid
+import cv2  # 비디오 처리를 위한 OpenCV 임포트. 프레임 단위 처리 및 바운딩 박스 그리기에 사용됨.
+from ultralytics import YOLO  # YOLOv8 모델 임포트. 객체 탐지에 사용됨.
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, url_for, redirect, session, jsonify, send_from_directory
 
@@ -16,6 +18,13 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__fil
 app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
+
+# YOLOv8 모델 초기화 (비디오 프레임 내 객체 탐지를 위해 사전 학습된 yolov8m 모델 로드)
+try:
+    yolo_model = YOLO('yolov8m.pt')
+except Exception as e:
+    yolo_model = None
+    print(f"YOLO 모델 로드 실패: {e}")
 
 # ===============================================
 # Helper Functions (Used by multiple routes or as dependencies)
@@ -31,24 +40,170 @@ def get_user_info(user_id):
     finally:
         conn.close()
 
-def simulate_ai_analysis(media_id):
-    print(f"[{media_id}] AI 분석 시작...")
-    time.sleep(5)
+def process_video_yolo(input_path, output_path):
+    """
+    업로드된 비디오를 읽어 프레임별로 YOLO 모델을 사용해 객체를 탐지하고,
+    바운딩 박스가 그려진 새로운 비디오 파일을 생성하며, 프레임별 태그 정보를 반환합니다.
+    (요구사항에 맞추어 비디오 내 객체를 식별하고 결과를 별도로 저장하기 위해 작성된 함수입니다.)
+    """
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise Exception("비디오 파일을 열 수 없습니다.")
+    
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps == 0 or fps != fps: # fps가 0이거나 NaN일 경우 대비 기본값 설정
+        fps = 30.0
+        
+    # MP4 코덱을 사용하여 처리된 영상을 저장 (호환성을 위해 mp4v 사용) -> 웹 브라우저 호환성을 위해 H.264(avc1) 코덱으로 변경
+    # 웹 브라우저는 mp4v 코덱을 네이티브로 재생하지 못하는 경우가 많아 영상 재생이 불가능할 수 있음
+    # [수정] 사용자의 시스템에 OpenH264 라이브러리(.dll)가 누락되어 avc1 코덱 초기화 에러가 발생한 상황.
+    # 별도 라이브러리 설치 없이도 웹에서 잘 호환되도록 코덱을 vp80(WebM)으로 변경함.
+    fourcc = cv2.VideoWriter_fourcc(*'vp80')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    frame_idx = 0
+    results_json = {}
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        time_sec = round(frame_idx / fps, 2)
+        
+        if yolo_model:
+            # YOLOv8 모델을 통한 프레임별 객체 추론 (출력 로그 최소화)
+            results = yolo_model(frame, verbose=False)
+            
+            frame_tags = []
+            for result in results:
+                for box in result.boxes:
+                    cls_id = int(box.cls[0])
+                    label = yolo_model.names[cls_id]
+                    if label not in frame_tags:
+                        frame_tags.append(label)
+                # YOLO 객체에 내장된 plot 기능을 활용하여 바운딩 박스를 간편하게 그림
+                frame = result.plot()
+                
+            results_json[str(time_sec)] = frame_tags
+        
+        # 바운딩 박스가 추가된 프레임을 새로운 비디오 파일에 기록
+        out.write(frame)
+        frame_idx += 1
+        
+    cap.release()
+    out.release()
+    return results_json
+
+def process_image_yolo(input_path, output_path):
+    """
+    업로드된 이미지를 읽어 YOLO 모델을 사용해 객체를 탐지하고,
+    바운딩 박스가 그려진 새로운 이미지 파일을 생성하며, 탐지된 객체 정보를 반환합니다.
+    (실제 AI 모델을 통해 이미지 분석 결과를 도출하고 시각화된 결과를 저장하기 위해 추가됨)
+    """
+    img = cv2.imread(input_path)
+    if img is None:
+        raise Exception("이미지 파일을 읽을 수 없습니다.")
+
+    objects = []
+    if yolo_model:
+        # 모델 추론 진행
+        results = yolo_model(img, verbose=False)
+        for result in results:
+            for box in result.boxes:
+                # 좌표, 신뢰도, 클래스 추출
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                conf = float(box.conf[0])
+                cls_id = int(box.cls[0])
+                label = yolo_model.names[cls_id]
+                
+                # 프론트엔드 포맷(objects 배열)에 맞게 구성
+                objects.append({
+                    "box": [x1, y1, x2, y2],
+                    "label": label,
+                    "score": conf
+                })
+            # YOLO가 제공하는 plot 기능을 통해 원본 이미지 위에 바운딩 박스를 덧그림
+            img = result.plot()
+
+    # 분석이 완료된 이미지를 파일로 저장
+    cv2.imwrite(output_path, img)
+    return objects
+
+def execute_ai_analysis(media_id):
+    """
+    기존 더미 AI 분석 로직을 실제 YOLO 모델 분석으로 대체합니다.
+    파일 타입이 VIDEO일 경우 process_video_yolo를, IMAGE일 경우 process_image_yolo를 호출하여 분석을 수행합니다.
+    (mediafile_uploads에서 호출되어 실제 AI 추론 작업을 처리합니다.)
+    """
+    print(f"[{media_id}] 실제 AI 분석 시작...")
     conn = Session.get_connection()
     try:
         with conn.cursor() as cursor:
-            dummy_result = {
-                "objects": [
-                    {"box": [10, 20, 80, 90], "label": "cat", "score": 0.95},
-                    {"box": [100, 120, 180, 200], "label": "dog", "score": 0.91}
-                ]
-            }
-            sql = "UPDATE analysis_results SET status = 'SUCCESS', result_json = %s WHERE media_id = %s"
-            cursor.execute(sql, (json.dumps(dummy_result), media_id))
-            conn.commit()
-            print(f"[{media_id}] 분석 완료!")
+            # 분석할 대상 파일의 경로 및 타입 조회
+            cursor.execute("SELECT stored_path, file_type FROM media_files WHERE id = %s", (media_id,))
+            row = cursor.fetchone()
+            if not row:
+                print(f"[{media_id}] 미디어 파일을 찾을 수 없습니다.")
+                return
+            
+            stored_path = row['stored_path']
+            file_type = row['file_type']
+            
+            if file_type == 'VIDEO':
+                # 처리된 비디오 파일명 생성 로직 (원본 파일명 뒤에 _processed 추가)
+                base_name, ext = os.path.splitext(stored_path)
+                # [수정] 코덱을 vp80으로 변경함에 따라 호환되는 컨테이너 포맷인 .webm 확장자로 저장하도록 파일 확장자를 변경함.
+                processed_path = f"{base_name}_processed.webm"
+                
+                try:
+                    # YOLO를 이용한 비디오 분석 및 저장 수행
+                    analysis_data = process_video_yolo(stored_path, processed_path)
+                    
+                    # 프레임별 태그 정보와 생성된 비디오 파일 이름을 포함하여 JSON 생성
+                    final_result = {
+                        "processed_video_path": os.path.basename(processed_path),
+                        "frame_tags": analysis_data
+                    }
+                    
+                    # 성공적으로 처리된 결과를 데이터베이스에 업데이트
+                    sql = "UPDATE analysis_results SET status = 'SUCCESS', result_json = %s WHERE media_id = %s"
+                    cursor.execute(sql, (json.dumps(final_result), media_id))
+                    conn.commit()
+                    print(f"[{media_id}] 비디오 AI 분석 완료!")
+                except Exception as e:
+                    print(f"[{media_id}] 비디오 처리 중 오류 발생: {e}")
+                    cursor.execute("UPDATE analysis_results SET status = 'FAIL' WHERE media_id = %s", (media_id,))
+                    conn.commit()
+            else:
+                # 이미지 파일에 대한 실제 AI 분석 수행 로직으로 교체
+                base_name, ext = os.path.splitext(stored_path)
+                processed_path = f"{base_name}_processed{ext}"
+                
+                try:
+                    # process_image_yolo 함수를 통해 추론 및 이미지 생성 수행
+                    objects_data = process_image_yolo(stored_path, processed_path)
+                    
+                    # 프론트엔드가 요구하는 포맷으로 JSON 생성
+                    final_result = {
+                        "objects": objects_data,
+                        "processed_image_path": os.path.basename(processed_path)
+                    }
+                    
+                    # DB에 분석 결과(JSON 형태)를 업데이트
+                    sql = "UPDATE analysis_results SET status = 'SUCCESS', result_json = %s WHERE media_id = %s"
+                    cursor.execute(sql, (json.dumps(final_result), media_id))
+                    conn.commit()
+                    print(f"[{media_id}] 이미지 AI 분석 완료!")
+                except Exception as e:
+                    print(f"[{media_id}] 이미지 처리 중 오류 발생: {e}")
+                    cursor.execute("UPDATE analysis_results SET status = 'FAIL' WHERE media_id = %s", (media_id,))
+                    conn.commit()
+                
     except Exception as e:
-        print(f"[{media_id}] 분석 오류: {e}")
+        print(f"[{media_id}] 분석 DB 연동 오류: {e}")
     finally:
         conn.close()
 
@@ -76,8 +231,14 @@ def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
             media_id = cursor.lastrowid
             cursor.execute("INSERT INTO analysis_results (media_id, status) VALUES (%s, 'PENDING')", (media_id,))
             conn.commit()
-            thread = threading.Thread(target=simulate_ai_analysis, args=(media_id,), daemon=True)
-            thread.start()
+            
+            # [요청이 완료되면 넘어가도록 변경]
+            # 기존에는 스레드를 사용하여 비동기로 분석을 처리하고 상태를 polling 했으나,
+            # 요청 자체에서 분석이 완료될 때까지 대기하도록 동기 처리 방식으로 변경합니다.
+            # thread = threading.Thread(target=execute_ai_analysis, args=(media_id,), daemon=True)
+            # thread.start()
+            execute_ai_analysis(media_id)
+            
             return media_id
     except Exception as e:
         conn.rollback()
@@ -315,23 +476,20 @@ def analyze_result():
     if not file or file.filename == '':
         return jsonify({"status": "error", "message": "파일이 선택되지 않았습니다."}), 400
     try:
+        # 클라이언트 요청 시 분석을 동기적으로 수행하여 완료될 때까지 대기합니다.
+        # 기존의 백그라운드 스레드 및 폴링 방식 대신 분석이 끝나면 즉시 성공 상태를 반환합니다.
         media_id = mediafile_uploads(file, session['user_id'], app.config['UPLOAD_FOLDER'], app.config, memo=memo)
-        for _ in range(15):
-            time.sleep(2)
-            result = get_status(media_id)
-            if result and result['status'] == 'SUCCESS':
-                return jsonify({
-                    "status": "success",
-                    "media_id": media_id,
-                    "analysis_result": result['result_json']
-                })
-        return jsonify({"status": "pending", "media_id": media_id, "analysis_result": "분석 시간 초과"})
+        # 즉시 pending 상태를 반환하던 부분을 success를 반환하도록 수정 (폴링 안함)
+        return jsonify({"status": "success", "media_id": media_id})
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
         print(f"업로드 오류: {e}")
         return jsonify({"status": "error", "message": "서버 오류가 발생했습니다."}), 500
 
+# [기존 폴링용 상태 확인 API 주석 처리 시작]
+# 더 이상 비동기 폴링을 사용하지 않으므로 상태 확인 API를 비활성화합니다.
+'''
 @app.route('/api/analysis/status/<int:media_id>')
 def get_analysis_status(media_id):
     result = get_status(media_id)
@@ -362,6 +520,8 @@ def get_analysis_status(media_id):
             "formatted": formatted_text
         })
     return jsonify({"status": "not_found"}), 404
+'''
+# [기존 폴링용 상태 확인 API 주석 처리 끝]
 
 @app.route('/analyze/analysis/<int:media_id>')
 def analysis_detail(media_id):
@@ -392,16 +552,25 @@ def analysis_detail(media_id):
                     analysis_data['result_json'] = json.loads(analysis_data['result_json'])
                 
                 # AI 분석 결과(result_json)를 사람이 읽기 좋은 형태의 문자열로 가공합니다.
-                # 상세 페이지에서 복잡한 JSON 객체 대신 깔끔하게 포맷된 텍스트를 보여주기 위함입니다.
+                # 비디오와 이미지에 따라 결과 구조가 다르므로 분기하여 처리합니다.
                 try:
-                    objects = analysis_data['result_json'].get('objects', [])
-                    if not objects:
-                        formatted_text = "검출된 객체가 없습니다."
+                    result_json = analysis_data['result_json']
+                    if analysis_data['file_type'] == 'VIDEO':
+                        # 비디오의 경우 frame_tags 데이터가 존재하면 프론트엔드에서 처리하도록 안내 메시지 출력
+                        if result_json and 'frame_tags' in result_json and result_json['frame_tags']:
+                            analysis_data['formatted_result'] = "비디오 분석이 완료되었습니다. 영상을 재생하여 프레임별 탐지 결과를 확인하세요."
+                        else:
+                            analysis_data['formatted_result'] = "검출된 객체가 없습니다."
                     else:
-                        lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)" 
-                                 for i, obj in enumerate(objects, 1)]
-                        formatted_text = "\n".join(lines)
-                    analysis_data['formatted_result'] = formatted_text
+                        # 이미지의 경우 기존 로직 유지 (objects 배열 파싱)
+                        objects = result_json.get('objects', [])
+                        if not objects:
+                            formatted_text = "검출된 객체가 없습니다."
+                        else:
+                            lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)" 
+                                     for i, obj in enumerate(objects, 1)]
+                            formatted_text = "\n".join(lines)
+                        analysis_data['formatted_result'] = formatted_text
                 except Exception:
                     analysis_data['formatted_result'] = "결과 포맷팅 중 오류 발생"
 
@@ -446,7 +615,7 @@ def file_update(media_id):
                 conn.commit()
                 if old_file_path != new_stored_path and os.path.exists(old_file_path):
                     os.remove(old_file_path)
-                thread = threading.Thread(target=simulate_ai_analysis, args=(media_id,), daemon=True)
+                thread = threading.Thread(target=execute_ai_analysis, args=(media_id,), daemon=True)
                 thread.start()
                 success = True
     except Exception as e:
@@ -470,19 +639,50 @@ def delete_media_file(media_id):
     conn = Session.get_connection()
     try:
         with conn.cursor() as cursor:
-            sql_select = "SELECT stored_path FROM media_files WHERE id = %s AND member_id = %s"
+            # 원본 파일 경로와 AI 분석 결과로 생성된 파생 파일 경로를 모두 조회하기 위해 JOIN 수행
+            # 유령 파일(하드디스크에 남는 파일)을 방지하기 위함
+            sql_select = """
+                SELECT m.stored_path, r.result_json 
+                FROM media_files m 
+                LEFT JOIN analysis_results r ON m.id = r.media_id 
+                WHERE m.id = %s AND m.member_id = %s
+            """
             cursor.execute(sql_select, (media_id, session['user_id']))
             row = cursor.fetchone()
+            
             if row:
-                file_path = os.path.abspath(row['stored_path'])
+                file_paths_to_delete = []
+                
+                # 1. 원본 미디어 파일 경로 추가
+                if row.get('stored_path'):
+                    file_paths_to_delete.append(os.path.abspath(row['stored_path']))
+                
+                # 2. 파생 파일 (AI 분석 결과 비디오 등) 경로 추출 및 추가
+                if row.get('result_json'):
+                    try:
+                        result_data = json.loads(row['result_json']) if isinstance(row['result_json'], str) else row['result_json']
+                        # process_video_yolo 등에서 생성하여 result_json에 저장한 파일명 키 확인
+                        for key in ['processed_video_path', 'processed_image_path']:
+                            if key in result_data and result_data[key]:
+                                processed_filename = result_data[key]
+                                processed_path = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], processed_filename))
+                                file_paths_to_delete.append(processed_path)
+                    except Exception as e:
+                        print(f"[{media_id}] result_json 파싱 중 오류 발생 (파생 파일 확인 불가): {e}")
+
+                # 3. 데이터베이스 레코드 삭제 (외래키 제약조건이 없으므로 자식 테이블부터 삭제)
                 cursor.execute("DELETE FROM analysis_results WHERE media_id = %s", (media_id,))
                 cursor.execute("DELETE FROM media_files WHERE id = %s AND member_id = %s", (media_id, session['user_id']))
                 conn.commit()
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                    except OSError as e:
-                        print(f"[경고] DB는 지워졌으나 파일 삭제 실패: {e}")
+                
+                # 4. 수집된 모든 파일들을 서버 파일 시스템에서 일괄 삭제 (예외 처리 포함)
+                for f_path in file_paths_to_delete:
+                    if os.path.exists(f_path):
+                        try:
+                            os.remove(f_path)
+                        except OSError as e:
+                            print(f"[경고] 파일 삭제 실패 ({f_path}): {e}")
+                
                 success = True
     except Exception as e:
         conn.rollback()

@@ -1,0 +1,268 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h3 class="mb-1">학생 성적 입력</h3>
+    <div class="text-muted">학생을 선택한 뒤 국어/영어/수학 점수를 입력하세요.</div>
+  </div>
+  <span class="badge text-bg-primary">관리자/매니저</span>
+</div>
+
+<div class="row g-3">
+  <!-- 입력 폼 -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="post" action="/score/members" class="needs-validation" novalidate>
+          <div class="mb-3">
+            <label for="select_member" class="form-label">학생 선택</label>
+            <select class="form-select" id="select_member" name="select_member" required>
+              <option value="" selected disabled>학생을 선택하세요</option>
+              {% for s in scores %}
+                <option
+                  value="{{ s.mid }}"
+                  data-name="{{ s.name }}"
+                  data-korean="{{ '' if s.korean is none else s.korean }}"
+                  data-english="{{ '' if s.english is none else s.english }}"
+                  data-math="{{ '' if s.math is none else s.math }}"
+                  data-total="{{ '' if s.total is none else s.total }}"
+                  data-average="{{ '' if s.average is none else s.average }}"
+                  data-grade="{{ '' if s.grade is none else s.grade }}"
+                >
+                  {{ s.name }} (ID: {{ s.mid }})
+                  {% if s.korean is not none %} · 등록됨{% else %} · 미등록{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="invalid-feedback">학생을 선택해주세요.</div>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-4">
+              <label for="korean" class="form-label">국어</label>
+              <input type="number" class="form-control" id="korean" name="korean"
+                     min="0" max="100" step="1" placeholder="최대 100점까지" required>
+              <div class="invalid-feedback">0~100 점수로 입력해주세요.</div>
+            </div>
+            <div class="col-4">
+              <label for="english" class="form-label">영어</label>
+              <input type="number" class="form-control" id="english" name="english"
+                     min="0" max="100" step="1" placeholder="최대 100점까지" required>
+              <div class="invalid-feedback">0~100 점수로 입력해주세요.</div>
+            </div>
+            <div class="col-4">
+              <label for="math" class="form-label">수학</label>
+              <input type="number" class="form-control" id="math" name="math"
+                     min="0" max="100" step="1" placeholder="최대 100점까지" required>
+              <div class="invalid-feedback">0~100 점수로 입력해주세요.</div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <div class="alert alert-light border mb-3" role="alert">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold" id="modeText">학생을 선택하면 입력 모드가 표시됩니다.</div>
+                  <div class="small text-muted" id="previewText">총점/평균/등급은 저장 시 서버에서 계산됩니다.</div>
+                </div>
+                <span class="badge text-bg-secondary" id="gradeBadge">-</span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary w-100" type="submit" id="submitBtn" disabled>저장하기</button>
+            <div class="form-text mt-2">
+              * 동일 학생의 성적이 이미 존재하면 <b>수정</b>으로 처리됩니다.
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측 현황 -->
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="mb-0">학생별 성적 현황</h5>
+          <span class="text-muted small">(참고용)</span>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>이름</th>
+                <th class="text-end">국어</th>
+                <th class="text-end">영어</th>
+                <th class="text-end">수학</th>
+                <th class="text-end">총점</th>
+                <th class="text-end">평균</th>
+                <th class="text-center">등급</th>
+                <th class="text-center">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in scores %}
+                <tr>
+                  <td class="fw-semibold">{{ s.name }}</td>
+                  <td class="text-end">{{ '-' if s.korean is none else s.korean }}</td>
+                  <td class="text-end">{{ '-' if s.english is none else s.english }}</td>
+                  <td class="text-end">{{ '-' if s.math is none else s.math }}</td>
+                  <td class="text-end">{{ '-' if s.total is none else s.total }}</td>
+                  <td class="text-end">
+                    {% if s.average is none %}
+                      -
+                    {% else %}
+                      {{ '%.2f'|format(s.average) }}
+                    {% endif %}
+                  </td>
+                  <td class="text-center">{{ '-' if s.grade is none else s.grade }}</td>
+                  <td class="text-center">
+                    {% if s.korean is not none %}
+                      <span class="badge text-bg-success">등록</span>
+                    {% else %}
+                      <span class="badge text-bg-secondary">미등록</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="text-muted small mt-2">
+          Tip) 학생을 선택하면 기존 점수가 자동으로 채워집니다.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Bootstrap validation
+  (() => {
+    'use strict';
+    const forms = document.querySelectorAll('.needs-validation');
+    Array.from(forms).forEach(form => {
+      form.addEventListener('submit', event => {
+        // 제출 직전에도 한번 더 클램프
+        clampScoreInput(koreanEl);
+        clampScoreInput(englishEl);
+        clampScoreInput(mathEl);
+
+        if (!form.checkValidity()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    });
+  })();
+
+  const selectEl = document.getElementById('select_member');
+  const koreanEl = document.getElementById('korean');
+  const englishEl = document.getElementById('english');
+  const mathEl = document.getElementById('math');
+  const modeTextEl = document.getElementById('modeText');
+  const previewTextEl = document.getElementById('previewText');
+  const gradeBadgeEl = document.getElementById('gradeBadge');
+  const submitBtnEl = document.getElementById('submitBtn');
+
+  function toNum(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // ✅ 0~100 범위로 즉시 보정(100점 이상 입력 못하게)
+  function clampScoreInput(el) {
+    if (el.value === '') return;
+
+    let n = Number(el.value);
+    if (!Number.isFinite(n)) {
+      el.value = '';
+      return;
+    }
+    if (n > 100) el.value = 100;
+    if (n < 0) el.value = 0;
+  }
+
+  // 프리뷰용 등급(서버 등급 로직과 다를 수 있음)
+  function calcGrade(avg) {
+    if (avg === null) return '-';
+    if (avg >= 90) return 'A';
+    if (avg >= 80) return 'B';
+    if (avg >= 70) return 'C';
+    if (avg >= 60) return 'D';
+    return 'F';
+  }
+
+  function updatePreview() {
+    const k = toNum(koreanEl.value);
+    const e = toNum(englishEl.value);
+    const m = toNum(mathEl.value);
+
+    if (k === null || e === null || m === null) {
+      previewTextEl.textContent = '총점/평균/등급은 저장 시 서버에서 계산됩니다.';
+      gradeBadgeEl.textContent = '-';
+      gradeBadgeEl.className = 'badge text-bg-secondary';
+      return;
+    }
+
+    const total = k + e + m;
+    const avg = total / 3;
+    const grade = calcGrade(avg);
+
+    previewTextEl.textContent = `프리뷰: 총점 ${total} / 평균 ${avg.toFixed(2)}`;
+    gradeBadgeEl.textContent = grade;
+
+    gradeBadgeEl.className =
+      (grade === 'A') ? 'badge text-bg-success' :
+      (grade === 'B') ? 'badge text-bg-primary' :
+      (grade === 'C') ? 'badge text-bg-info' :
+      (grade === 'D') ? 'badge text-bg-warning' :
+      'badge text-bg-danger';
+  }
+
+  function applySelectedStudent() {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    if (!opt || !opt.value) {
+      submitBtnEl.disabled = true;
+      modeTextEl.textContent = '학생을 선택하면 입력 모드가 표시됩니다.';
+      koreanEl.value = '';
+      englishEl.value = '';
+      mathEl.value = '';
+      updatePreview();
+      return;
+    }
+
+    const name = opt.dataset.name || '학생';
+    const hasScore = (opt.dataset.korean !== '' && opt.dataset.english !== '' && opt.dataset.math !== '');
+
+    koreanEl.value = opt.dataset.korean || '';
+    englishEl.value = opt.dataset.english || '';
+    mathEl.value = opt.dataset.math || '';
+
+    modeTextEl.textContent = hasScore
+      ? `${name} 성적 수정 모드 (기존 성적 불러옴)`
+      : `${name} 성적 등록 모드`;
+
+    submitBtnEl.disabled = false;
+
+    // 기존 점수도 범위 보정
+    [koreanEl, englishEl, mathEl].forEach(clampScoreInput);
+    updatePreview();
+  }
+
+  function onScoreInput(e) {
+    clampScoreInput(e.target);
+    updatePreview();
+  }
+
+  selectEl.addEventListener('change', applySelectedStudent);
+  [koreanEl, englishEl, mathEl].forEach(el => el.addEventListener('input', onScoreInput));
+
+  window.addEventListener('DOMContentLoaded', applySelectedStudent);
+</script>
+{% endblock %}
