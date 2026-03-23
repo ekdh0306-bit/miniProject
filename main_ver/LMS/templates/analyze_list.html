@@ -5,39 +5,85 @@
     <div class="hero-overlay"></div>
 
     <div class="hero-content">
-        <div class="list-header" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; padding: 0 20px;">
+        <div class="list-header"
+             style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; padding: 0 20px;">
             <h2 class="register-title" style="margin: 0; color: #00d1b2; font-size: 1.8rem;">🔬 분석 히스토리</h2>
-            <p style="color: rgba(255,255,255,0.5); margin: 0;">지금까지 분석한 총 <span style="color:#00d1b2;">{{ analyze_list|length }}</span>개의 리포트가 있습니다.</p>
+            <p style="color: rgba(255,255,255,0.5); margin: 0;">지금까지 분석한 총 <span style="color:#00d1b2;">{{ analyze_list|length }}</span>개의
+                리포트가 있습니다.</p>
         </div>
 
-        <div class="analysis-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding: 0 20px;">
+        <div class="analysis-grid"
+             style="display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 💡 정확히 2분할 */
+            gap: 20px;
+            padding: 0 10px;
+            max-width: 900px; /* 너무 퍼지지 않게 폭 조정 */
+            margin: 0 auto;">
             {% for item in analyze_list %}
             <div class="register-card"
-                 style="position: relative; cursor: pointer; transition: 0.3s; margin: 0; padding: 30px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); backdrop-filter: blur(5px); border-radius: 20px;"
-                 {# 💡 데이터 속성 이름을 정리합니다 #}
-                 data-type="{{ item.file_type }}"
-                 data-path="{{ item.stored_path }}"
-                 data-memo="{{ item.memo or '' }}"
-                 data-result="{{ item.result_json or '{}' }}"
+                 style="position: relative; cursor: pointer; transition: 0.3s; margin: 0; padding: 0; /* 패딩 0으로 변경 */
+            border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(5px); border-radius: 20px; overflow: hidden;"
                  data-id="{{ item.id }}"
                  onclick="handleCardClick(this)">
 
+                {# 썸네일 영역 #}
+                <div class="thumbnail-box"
+                     style="width: 100%; height: 200px; background: #000; overflow: hidden; position: relative;">
+                    {% if item.stored_path %}
+                    {% set filename = item.stored_path.split('/')[-1].split('\\')[-1] %}
+                    {% set thumb_url = '/uploads/' + filename %}
+
+                    {% if item.file_type|upper == 'IMAGE' %}
+                    <img src="{{ thumb_url }}"
+                         style="width: 100%; height: 100%; object-fit: cover;"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div style="display:none; width: 100%; height: 100%; background: #222; align-items: center; justify-content: center; color: #555;">
+                        Image Not Found
+                    </div>
+
+                    {% elif item.file_type|upper == 'VIDEO' %}
+                    <div style="width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center;">
+                        <video src="{{ thumb_url }}#t=0.1"
+                               style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;">
+                        </video>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.7;">
+                            <span style="font-size: 2rem;">▶️</span>
+                        </div>
+                    </div>
+                    {% endif %} {# 💡 file_type 체크 종료 #}
+
+                    {% else %}
+                    {# 💡 stored_path가 없을 때 #}
+                    <div style="width: 100%; height: 100%; background: #222; display: flex; align-items: center; justify-content: center; color: #555;">
+                        No Data
+                    </div>
+                    {% endif %} {# 💡 stored_path 체크 종료 #}
+                </div>
+
+                {# 🗑️ 삭제 버튼 (위치 조정) #}
                 <button onclick="deleteHistory(event, '{{ item.id }}')"
-                        style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 1.1rem; z-index: 10;">
+                        style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); border: none;
+                   color: white; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; z-index: 10;">
                     🗑️
                 </button>
 
-                <h3 style="color: #00d1b2; margin-bottom: 15px; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px;">{{ item.memo or '제목 없음' }}</h3>
+                {# 📝 정보 영역 (패딩 추가) #}
+                <div style="padding: 20px;">
+                    <h3 style="color: #00d1b2; margin-bottom: 10px; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {{ item.memo or '제목 없음' }}
+                    </h3>
 
-                <div class="list-info">
-                    <p style="color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 15px;">
-                        📅 분석일: {{ item.uploaded_at or '날짜 정보 없음' }}
-                    </p>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.75rem; color: #00d1b2; background: rgba(0,209,178,0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(0,209,178,0.3);">
-                            {{ '분석 완료' if item.status in ['done', 'SUCCESS'] else '분석 중' }}
-                        </span>
-                        <span style="color: #00d1b2; font-weight: bold; font-size: 0.9rem;">리포트 보기 →</span>
+                    <div class="list-info">
+                        <p style="color: rgba(255,255,255,0.4); font-size: 0.8rem; margin-bottom: 12px;">
+                            📅 {{ item.uploaded_at or '날짜 미상' }}
+                        </p>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.7rem; color: #00d1b2; background: rgba(0,209,178,0.1); padding: 4px 10px; border-radius: 15px;">
+                    {{ '완료' if item.status in ['done', 'SUCCESS'] else '분석 중' }}
+                </span>
+                            <span style="color: #00d1b2; font-weight: bold; font-size: 0.85rem;">상세보기 →</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -45,7 +91,9 @@
         </div>
 
         <div class="list-footer" style="margin-top: 60px; text-align: center;">
-            <button onclick="location.href='/analyze'" class="hero-btn" style="background: #00d1b2; color: black;">➕ 새 분석 시작하기</button>
+            <button onclick="location.href='/analyze'" class="hero-btn" style="background: #00d1b2; color: black;">➕ 새
+                분석 시작하기
+            </button>
         </div>
     </div>
 </div>
