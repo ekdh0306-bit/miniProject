@@ -1,0 +1,75 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+    <div class="hero-content"
+         style="position: relative; z-index: 2; display: flex; justify-content: center; padding-top: 50px;">
+        <div class="register-card" style="width: 100%; max-width: 400px;">
+            <h2 class="register-title">아이디 찾기</h2>
+
+            <form id="findIdForm">
+                <div class="input-group">
+                    <label for="name">이름</label>
+                    <input type="text" id="name" name="name" placeholder="가입 시 등록한 이름" required>
+                </div>
+                <div class="input-group">
+                    <label for="email">이메일</label>
+                    <input type="email" id="email" name="email" placeholder="example@email.com" required>
+                </div>
+
+                <button type="submit" class="hero-btn register-submit" style="width: 100%; border: none;">아이디 찾기
+                </button>
+            </form>
+
+            <div id="result-area"
+                 style="display: none; margin-top: 25px; text-align: center; padding: 30px 20px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+
+                <p id="result-msg" style="color: white; margin-bottom: 25px; line-height: 1.6;"></p>
+
+                <a href="/login" id="login-btn" class="hero-btn"
+                   style="display: none; margin-left: auto; margin-right: auto; text-decoration: none; border: none;">
+                    로그인하러 가기
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('findIdForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const resultArea = document.getElementById('result-area');
+        const resultMsg = document.getElementById('result-msg');
+        const loginBtn = document.getElementById('login-btn');
+
+        // 💡 1. 요청 전 초기화 (이전 결과 지우기)
+        resultMsg.style.color = "white";
+        loginBtn.style.display = 'none';
+
+        fetch('/find_id', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                resultArea.style.display = 'block';
+
+                if (data.success) {
+                    resultMsg.innerHTML = `회원님의 아이디는 <br><strong style="color: #00d1b2; font-size: 1.2rem;">${data.uid}</strong> 입니다.`;
+                    loginBtn.style.display = 'flex';
+                } else {
+                    // 실패 시 빨간색
+                    resultMsg.textContent = data.message;
+                    resultMsg.style.color = "#ff4d4d";
+                }
+            })
+            .catch(err => {
+                console.error("Error:", err);
+                alert("서버 통신 중 오류가 발생했습니다.");
+            });
+    });
+</script>
+{% endblock %}
