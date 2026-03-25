@@ -3,7 +3,7 @@ import re
 import requests
 from github import Github, Auth
 
-# 환경 변수 설정
+# 환경 변수 설정.
 GH_TOKEN = os.environ.get("GH_TOKEN")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
