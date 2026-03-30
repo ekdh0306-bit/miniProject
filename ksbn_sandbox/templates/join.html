@@ -14,6 +14,7 @@
                 <div class="input-group">
                     <label for="uid">아이디</label>
                     <input type="text" id="uid" name="uid" placeholder="아이디를 입력하세요" required>
+                    <span id="uid-check-msg" style="font-size: 0.8rem; margin-top: 5px; display: none;"></span>
                 </div>
                 <div class="input-group">
                     <label for="email">이메일</label>
@@ -29,10 +30,12 @@
                 </div>
                 <div class="input-group">
                     <label for="confirm_password">비밀번호 확인</label>
-                    <input type="password" id="confirm_password" name="confirm_password" placeholder="비밀번호를 한 번 더 입력하세요" required>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="비밀번호를 한 번 더 입력하세요"
+                           required>
                 </div>
 
-                <button type="submit" class="hero-btn register-submit" style="width: 100%; border: none; margin-top: 10px;">
+                <button type="submit" class="hero-btn register-submit"
+                        style="width: 100%; border: none; margin-top: 10px;">
                     가입하기
                 </button>
             </form>
@@ -45,7 +48,60 @@
 </div>
 
 <script>
-    document.querySelector('.register-form').addEventListener('submit', function(e) {
+
+    const uidInput = document.getElementById('uid');
+    const msgSpan = document.getElementById('uid-check-msg');
+    let isUidValid = false; // 중복 확인 통과 여부 변수
+
+    // 1. 아이디 입력창에서 포커스가 나갈 때(blur) 중복 확인 실행
+    uidInput.addEventListener('blur', function () {
+        const uid = uidInput.value;
+        if (!uid) {
+            msgSpan.style.display = 'none';
+            return;
+        }
+
+        // 파이썬 @app.route('/check_uid')로 요청 전송
+        fetch(`/check_uid?uid=${uid}`)
+            .then(response => response.json())
+            .then(data => {
+                msgSpan.style.display = 'block';
+                if (data.exists) {
+                    msgSpan.textContent = "❌ 이미 사용 중인 아이디입니다.";
+                    msgSpan.style.color = "#ff4d4d"; // 빨간색
+                    isUidValid = false;
+                } else {
+                    msgSpan.textContent = "✅ 사용 가능한 아이디입니다.";
+                    msgSpan.style.color = "#00d1b2"; // 민트색
+                    isUidValid = true;
+                }
+            })
+            .catch(err => console.error("Error:", err));
+    });
+
+    // 2. 폼 제출(Submit) 시 최종 검사
+    document.querySelector('.register-form').addEventListener('submit', function (e) {
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirm_password').value;
+
+        // 아이디 중복 확인을 통과 못했다면 제출 방지
+        if (!isUidValid) {
+            e.preventDefault();
+            alert("아이디 중복 확인을 먼저 완료해주세요.");
+            uidInput.focus();
+            return;
+        }
+
+        // 비밀번호 일치 확인
+        if (password !== confirmPassword) {
+            e.preventDefault();
+            alert("비밀번호가 일치하지 않습니다.");
+            document.getElementById('confirm_password').focus();
+            return;
+        }
+    });
+
+    document.querySelector('.register-form').addEventListener('submit', function (e) {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         const confirmPassword = document.getElementById('confirm_password').value;
@@ -61,5 +117,6 @@
         // 2. 일치할 경우 알림 (실제 서버 전송 전)
         // alert("회원가입을 축하합니다! " + username + "님, 환영합니다!");
     });
+
 </script>
 {% endblock %}
