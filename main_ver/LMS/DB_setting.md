@@ -7,6 +7,8 @@ CREATE TABLE members (
     role enum("user","admin","manager") default "user",
     active tinyint(1) DEFAULT '1',
     email varchar(200) NOT NULL,
+    profile_image varchar(255),
+    bio varchar(255),
     CONSTRAINT chk_email_at CHECK (email LIKE '%@%')
 );
 

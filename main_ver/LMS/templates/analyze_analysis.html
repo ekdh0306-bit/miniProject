@@ -16,7 +16,12 @@
                         {% if analysis_data %}
                             {% set filename = analysis_data.stored_path.split('/')[-1].split('\\')[-1] %}
                             {% if analysis_data.file_type == 'IMAGE' %}
-                                <img src="{{ url_for('uploaded_file', filename=filename) }}" style="width:100%; height: auto; display: block;">
+                                {% set image_filename = filename %}
+                                {% if analysis_data.result_json and analysis_data.result_json.processed_image_path %}
+                                    {% set image_filename = analysis_data.result_json.processed_image_path.split('/')[-1].split('\\')[-1] %}
+                                {% endif %}
+                                <!-- 백엔드에서 전달받은 처리된 이미지(processed_image_path)가 있으면 해당 이미지를 출력하고, 없으면 원본 이미지 출력 -->
+                                <img src="{{ url_for('uploaded_file', filename=image_filename) }}" style="width:100%; height: auto; display: block;">
                             {% elif analysis_data.file_type == 'VIDEO' %}
                                 {% set video_filename = filename %}
                                 {% if analysis_data.result_json and analysis_data.result_json.processed_video_path %}
