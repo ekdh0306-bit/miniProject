@@ -11,7 +11,7 @@
 *   **프론트엔드:**
     *   **HTML/CSS:** `templates/` 폴더의 HTML 파일들이 페이지 구조를 정의하고, `static/mainstyle.css`가 전체적인 디자인과 레이아웃을 담당합니다.
     *   **JavaScript:** 서버와의 비동기 통신(AJAX) 및 동적인 UI 제어를 위해 Vanilla JavaScript가 일부 사용됩니다.
-*   **데이터베이스:** **MySQL 또는 MariaDB**
+*   **데이터베이스:** **MySQL**
     *   `pymysql` 라이브러리를 통해 Python 코드와 상호작용하며, 사용자 정보, 미디어 파일 메타데이터, 분석 결과 등을 영구적으로 저장합니다.
 
 ## 3. 전체 시스템 동작 흐름

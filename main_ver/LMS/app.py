@@ -1,7 +1,5 @@
 import os
 import json
-import time
-import threading
 import uuid
 import cv2  # 비디오 처리를 위한 OpenCV 임포트. 프레임 단위 처리 및 바운딩 박스 그리기에 사용됨.
 from ultralytics import YOLO  # YOLOv8 모델 임포트. 객체 탐지에 사용됨.
@@ -19,9 +17,11 @@ app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 
-# YOLOv8 모델 초기화 (비디오 프레임 내 객체 탐지를 위해 사전 학습된 yolov8m 모델 로드)
+# YOLOv8 모델 초기화 (커스텀 학습된 best.pt 모델 로드)
+# 사용자가 직접 학습한 가중치 파일(best.pt)을 사용하도록 수정됨.
+# best.pt 내부의 클래스 인덱스(names)를 그대로 사용하므로 하드코딩된 필터링은 불필요.
 try:
-    yolo_model = YOLO('yolov8m.pt')
+    yolo_model = YOLO('best.pt')
 except Exception as e:
     yolo_model = None
     print(f"YOLO 모델 로드 실패: {e}")
@@ -307,10 +307,11 @@ def join():
                 conn.commit()
                 # 성공 시
                 return "<script>alert('회원가입이 완료 되었습니다.'); location.href='/login';</script>"
+        except Exception as e:
+            print(f"회원가입 오류: {e}")
+            return "<script>alert('가입 도중 오류가 발생하였습니다.'); history.back();</script>"
         finally:
             conn.close()
-
-        return "가입 도중 오류가 발생하였습니다."
 
     except Exception as e:
         print(e)
@@ -368,19 +369,48 @@ def member_edit():
         new_name = request.form.get('new_name')
         new_email = request.form.get('email')
         new_pw = request.form.get('pw')
+        new_memo = request.form.get('bio')
+
+        # [수정] 회원정보 수정 시 프로필 이미지와 bio를 함께 처리하도록 로직 병합
+        # 기존 /upload_profile에 있던 파일 저장 로직을 이곳으로 이동했습니다.
+        file = request.files.get('profile')
+        unique_filename = None
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(filepath)
 
         conn = Session.get_connection()
         try:
             with conn.cursor() as cursor:
                 if new_pw:
-                    sql = "UPDATE members SET uid = %s, name = %s, email = %s, password = %s WHERE id = %s"
-                    cursor.execute(sql, (new_uid, new_name, new_email, new_pw, session['user_id']))
+                    # bio(인삿말) 필드도 데이터베이스에 함께 업데이트되도록 쿼리 수정
+                    sql = "UPDATE members SET uid = %s, name = %s, email = %s, password = %s, bio = %s WHERE id = %s"
+                    cursor.execute(sql, (new_uid, new_name, new_email, new_pw, new_memo, session['user_id']))
                 else:
-                    sql = "UPDATE members SET uid = %s, name = %s, email = %s WHERE id = %s"
-                    cursor.execute(sql, (new_uid, new_name, new_email, session['user_id']))
+                    # [버그수정 및 반영] 기존 코드에서 파라미터 개수가 맞지 않던 부분을 수정하고 bio(new_memo)를 추가
+                    sql = "UPDATE members SET uid = %s, name = %s, email = %s, bio = %s WHERE id = %s"
+                    cursor.execute(sql, (new_uid, new_name, new_email, new_memo, session['user_id']))
+
+                # [요구사항] 프로필 데이터 존재 여부에 따른 INSERT / UPDATE 분기 로직 유지
+                if unique_filename:
+                    check_sql = "SELECT profile_image FROM members WHERE id = %s"
+                    cursor.execute(check_sql, (session['user_id'],))
+                    result = cursor.fetchone()
+
+                    if result:
+                        sql = "UPDATE members SET profile_image = %s WHERE id = %s"
+                        cursor.execute(sql, (unique_filename, session['user_id']))
+                    else:
+                        sql = "INSERT INTO members (id, profile_image) VALUES (%s, %s)"
+                        cursor.execute(sql, (session['user_id'], unique_filename))
+                        
                 conn.commit()
                 updated = True
-        except Exception:
+        except Exception as e:
+            print(e)
             updated = False
         finally:
             conn.close()
@@ -391,7 +421,7 @@ def member_edit():
             session['user_name'] = new_name
             return "<script>alert('회원정보 수정을 완료했습니다.'); location.href = '/mypage';</script>"
         else:
-             return "수정 도중 오류가 발생했습니다."
+             return "<script>alert('수정 도중 오류가 발생했습니다.'); history.back();</script>"
 
     except Exception as e:
         print(f'치명적 오류 발생{e}')
@@ -719,6 +749,10 @@ def analyze_list():
     finally:
         conn.close()
     return render_template('analyze_list.html', analyze_list=analysis_list_data)
+
+
+
+
 
 
 

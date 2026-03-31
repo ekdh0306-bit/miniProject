@@ -1,38 +1,85 @@
 {% extends "menu_layout.html" %}
 
 {% block content %}
-
 <div class="hero-container">
     <div class="hero-overlay"></div>
     <div class="hero-content">
 
-        <div class="register-card">
-            <h2 class="register-title"><a href="/" style="text-decoration: none; color: inherit;">정보 수정</a></h2>
-            <form action="/member/edit" method="POST">
-                <div class="input-group">
-                    <label>새 아이디</label>
-                    <input type="text" name="new_uid" placeholder="변경할 아이디">
+        <div class="register-card" style="max-width: 650px;">
+            <h2 class="register-title">
+                <a href="/">정보 수정</a>
+            </h2>
+
+            <form action="/member/edit" method="POST" enctype="multipart/form-data">
+
+                <div class="profile-section"
+                     style="margin-bottom: 35px; gap: 30px; display: flex; align-items: center;">
+
+                    <div class="profile-circle"
+                         onclick="document.getElementById('file-input').click();"
+                         style="cursor: pointer; width: 120px; height: 120px; border-radius: 50%; border: 2px dashed #00d1b2; position: relative; overflow: hidden;">
+
+                        <img id="preview" src="{{ url_for('uploaded_file', filename=user.profile_image) if user.profile_image else '#' }}" alt="미리보기"
+                             style="width: 100%; height: 100%; object-fit: cover; {{ 'display:none;' if not user.profile_image }}">
+
+                        <span id="upload-icon"
+                              style="font-size: 13px; color: #00d1b2; text-align: center; {{ 'display:none;' if user.profile_image }}">
+                클릭하여<br>이미지 추가
+            </span>
+                    </div>
+
+                    <input type="file" id="file-input" name="profile" accept="image/*" onchange="previewImage(this);"
+                           style="display: none;">
+
+                    <div class="input-group" style="flex: 1; margin: 0; border: none;">
+                        <label>한 줄 소개</label>
+                        <textarea name="bio" class="bio-textarea"
+                                  placeholder="자신을 한 줄로 표현해 보세요!">{{ user.bio or '' }}</textarea>
+                    </div>
                 </div>
-                <div class="input-group">
-                    <label>새 이름(닉네임)</label>
-                    <input type="text" name="new_name" placeholder="변경할 이름">
-                </div>
-                <div class="input-group">
-                    <label>새 비밀번호</label>
-                    <input type="password" name="pw" placeholder="변경할 비밀번호">
-                </div>
-                <div class="input-group">
-                    <label>이메일</label>
-                    <input type="email" name="email" placeholder="변경할 이메일 주소">
+
+                <div class="edit-grid-container">
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div class="input-group" style="margin: 0;">
+                            <label>새 아이디</label>
+                            <input type="text" name="new_uid" placeholder="변경할 아이디 (기존: {{ user.uid }})">
+                        </div>
+                        <div class="input-group" style="margin: 0;">
+                            <label>새 비밀번호</label>
+                            <input type="password" name="pw" placeholder="변경할 비밀번호">
+                        </div>
+
+                        <div class="input-group" style="margin: 0;">
+                            <label>비밀번호 확인</label>
+                            <input type="password" id="pw_confirm" placeholder="한 번 더 입력">
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div class="input-group" style="margin: 0;">
+                            <label>새 이름(닉네임)</label>
+                            <input type="text" name="new_name" placeholder="변경할 이름">
+                        </div>
+                        <div class="input-group" style="margin: 0;">
+                            <label>이메일</label>
+                            <input type="email" name="email" placeholder="변경할 이메일 주소">
+                        </div>
+
+                    </div>
                 </div>
                 <button type="submit" class="hero-btn register-submit">수정 완료</button>
             </form>
         </div>
 
-        <div class="delete-container">
-            <p>계정을 삭제하시겠습니까?</p>
+        <div class="delete-container"
+             style="max-width: 650px; width: 100%; margin: 20px auto 0 auto; padding: 40px; box-sizing: border-box;">
+
+            <p style="margin-bottom: 20px; font-size: 1rem; color: rgba(255, 255, 255, 0.7);">
+                계정을 삭제하시겠습니까? 탈퇴 시 모든 정보가 삭제됩니다.
+            </p>
+
             <a href="/member/delete/{{ session.get('user_id') }}"
                class="btn-delete"
+               style="display: inline-block; width: auto; min-width: 150px;"
                onclick="return confirm('정말 탈퇴하시겠습니까?');">
                 회원 탈퇴
             </a>
@@ -40,7 +87,35 @@
 
     </div>
 </div>
-</body>
-</html>
 
+<script>
+    function previewImage(input) {
+        const preview = document.getElementById('preview');
+        const icon = document.getElementById('upload-icon');
+
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                icon.style.display = 'none';
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // 비밀번호 일치 확인
+    const pwInput = document.getElementsByName('pw')[0];
+    const pwConfirm = document.getElementById('pw_confirm');
+    const pwError = document.getElementById('pw_error');
+
+    pwConfirm.addEventListener('input', function () {
+        if (pwInput.value !== pwConfirm.value) {
+            pwError.style.display = 'block';
+        } else {
+            pwError.style.display = 'none';
+        }
+    });
+
+</script>
 {% endblock %}
