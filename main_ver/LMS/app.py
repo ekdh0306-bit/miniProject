@@ -21,7 +21,7 @@ app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 # 사용자가 직접 학습한 가중치 파일(best.pt)을 사용하도록 수정됨.
 # best.pt 내부의 클래스 인덱스(names)를 그대로 사용하므로 하드코딩된 필터링은 불필요.
 try:
-    yolo_model = YOLO('best.pt')
+    yolo_model = YOLO('bestv2.pt')
 except Exception as e:
     yolo_model = None
     print(f"YOLO 모델 로드 실패: {e}")
@@ -318,6 +318,30 @@ def join():
         return "<script>alert('치명적인 오류가 발생했습니다. 다시 시도해주세요'); history.back();</script>"
 
 
+
+
+@app.route('/check_uid') # /check_uid URL로 접속하면 이 함수 실행 GET방식으로 요청 받음
+def check_uid():
+    uid = request.args.get('uid')
+
+    conn = Session.get_connection()
+    # Session 클래스에서 만들어둔 MySQL 연결 객체를 가져옴
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM members WHERE uid=%s",
+                (uid,)
+            )
+            if cursor.fetchone():
+                return {"exists": True} # 아이디 이미 사용 중(다른 사람이 쓰는중)
+            else:
+                return {"exists": False} # 사용 가능
+    finally:
+        conn.close()
+
+
+
+
 @app.route("/login", methods=['GET', 'POST'])
 def login():
     if request.method == 'GET':
@@ -348,6 +372,36 @@ def login():
     except Exception as e:
         print(e)
         return render_template('login.html', error="치명적 오류 발생, 다시 시도해주세요")
+
+
+
+
+
+@app.route('/find_id', methods=['GET', 'POST'])
+def find_id():
+    if request.method == 'GET':
+        return render_template("find_id.html")
+
+    name = request.form.get("name")
+    email = request.form.get("email")
+
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            sql = "SELECT uid FROM members WHERE name = %s AND email = %s"
+            cursor.execute(sql, (name, email))
+            row = cursor.fetchone()
+
+            if row:
+                return jsonify({"success": True, "uid": row['uid']})
+            else:
+                return jsonify({"success": False, "message": "일치하는 계정이 없습니다."})
+    finally:
+        conn.close()
+
+
+
+
 
 @app.route('/logout')
 def logout():
