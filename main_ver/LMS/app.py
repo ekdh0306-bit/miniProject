@@ -8,8 +8,6 @@ from flask import Flask, render_template, request, url_for, redirect, session, j
 
 from common.Session import Session
 
-
-
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -17,14 +15,28 @@ app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 
-# YOLOv8 모델 초기화 (커스텀 학습된 best.pt 모델 로드)
-# 사용자가 직접 학습한 가중치 파일(best.pt)을 사용하도록 수정됨.
-# best.pt 내부의 클래스 인덱스(names)를 그대로 사용하므로 하드코딩된 필터링은 불필요.
+# YOLOv8 모델 초기화 (커스텀 학습된 모델 로드)
+# 아키텍처(CPU) 서버 환경 구동을 위해 변환된 ONNX 경량화 모델을 사용하며, 파일이 없으면 자동 변환합니다.
+onnx_path = 'bestv3.onnx'
+pt_path = 'bestv3.pt'
+
+if not os.path.exists(onnx_path) and os.path.exists(pt_path):
+    print("🚀 [최초 시작 감지] 경량화된 ONNX 모델이 없습니다. 자동 변환을 수행합니다... (수 분 소요됨)")
+    try:
+        temp_model = YOLO(pt_path)
+        # FP16 양자화, 832 해상도 고정을 통해 서버 부하 최소화
+        temp_model.export(format='onnx', half=True, imgsz=832, simplify=True)
+        print("✅ [자동 변환] 완료되었습니다! 서버를 가동합니다.")
+    except Exception as e:
+        print(f"⚠️ 모델 변환 중 오류가 발생하여 기존 pt 모델을 사용합니다: {e}")
+        onnx_path = pt_path  # 실패 시 안전하게 기존 모델로 폴백(fallback)
+
 try:
-    yolo_model = YOLO('bestv2.pt')
+    yolo_model = YOLO(onnx_path)  # FP16 추론이 적용된 경량 ONNX 모델 로드
 except Exception as e:
     yolo_model = None
     print(f"YOLO 모델 로드 실패: {e}")
+
 
 # ===============================================
 # Helper Functions (Used by multiple routes or as dependencies)
@@ -40,6 +52,7 @@ def get_user_info(user_id):
     finally:
         conn.close()
 
+
 def process_video_yolo(input_path, output_path):
     """
     업로드된 비디오를 읽어 프레임별로 YOLO 모델을 사용해 객체를 탐지하고,
@@ -49,53 +62,70 @@ def process_video_yolo(input_path, output_path):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         raise Exception("비디오 파일을 열 수 없습니다.")
-    
+
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps == 0 or fps != fps: # fps가 0이거나 NaN일 경우 대비 기본값 설정
+    if fps == 0 or fps != fps:  # fps가 0이거나 NaN일 경우 대비 기본값 설정
         fps = 30.0
-        
+
     # MP4 코덱을 사용하여 처리된 영상을 저장 (호환성을 위해 mp4v 사용) -> 웹 브라우저 호환성을 위해 H.264(avc1) 코덱으로 변경
     # 웹 브라우저는 mp4v 코덱을 네이티브로 재생하지 못하는 경우가 많아 영상 재생이 불가능할 수 있음
     # [수정] 사용자의 시스템에 OpenH264 라이브러리(.dll)가 누락되어 avc1 코덱 초기화 에러가 발생한 상황.
     # 별도 라이브러리 설치 없이도 웹에서 잘 호환되도록 코덱을 vp80(WebM)으로 변경함.
     fourcc = cv2.VideoWriter_fourcc(*'vp80')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
+
     frame_idx = 0
     results_json = {}
-    
+
+    # 🚀 [최적화 3단계] 3프레임 당 1번만 실제 AI 분석을 수행 (연산량 약 66% 감소)
+    skip_frames = 3
+    last_plotted_frame = None
+    last_frame_tags = []
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-            
+
         time_sec = round(frame_idx / fps, 2)
-        
+
         if yolo_model:
-            # YOLOv8 모델을 통한 프레임별 객체 추론 (출력 로그 최소화)
-            results = yolo_model(frame, verbose=False)
-            
-            frame_tags = []
-            for result in results:
-                for box in result.boxes:
-                    cls_id = int(box.cls[0])
-                    label = yolo_model.names[cls_id]
-                    if label not in frame_tags:
-                        frame_tags.append(label)
-                # YOLO 객체에 내장된 plot 기능을 활용하여 바운딩 박스를 간편하게 그림
-                frame = result.plot()
-                
+            # 설정한 skip_frames(3프레임) 마다 모델 추론 진짜 수행
+            if frame_idx % skip_frames == 0:
+                # 🚀 [최적화 2단계] imgsz=1280 -> 832로 조정하여 연산량 및 메모리 사용량 반토막 감소
+                results = yolo_model(frame, verbose=False, conf=0.15, imgsz=832)
+
+                frame_tags = []
+                for result in results:
+                    for box in result.boxes:
+                        cls_id = int(box.cls[0])
+                        label = yolo_model.names[cls_id]
+                        if label not in frame_tags:
+                            frame_tags.append(label)
+                    # YOLO 객체에 내장된 plot 기능을 활용하여 바운딩 박스를 간편하게 그림
+                    frame = result.plot()
+
+                # 분석한 현재 결과(프레임 이미지 + 태그)를 저장해둠
+                last_plotted_frame = frame
+                last_frame_tags = frame_tags
+            else:
+                # AI 분석을 쉬는 프레임은 직전에 분석해둔 화면을 그대로 재사용하여 속도 대폭 향상
+                if last_plotted_frame is not None:
+                    frame = last_plotted_frame
+                    frame_tags = last_frame_tags
+
             results_json[str(time_sec)] = frame_tags
-        
+
         # 바운딩 박스가 추가된 프레임을 새로운 비디오 파일에 기록
         out.write(frame)
         frame_idx += 1
-        
+
     cap.release()
     out.release()
     return results_json
+
 
 def process_image_yolo(input_path, output_path):
     """
@@ -109,8 +139,8 @@ def process_image_yolo(input_path, output_path):
 
     objects = []
     if yolo_model:
-        # 모델 추론 진행
-        results = yolo_model(img, verbose=False)
+        # 🚀 [최적화 2단계] 이미지 분석 시에도 imgsz=1280 -> 832로 변경하여 처리 속도 대폭 개선
+        results = yolo_model(img, verbose=False, conf=0.15, imgsz=832)
         for result in results:
             for box in result.boxes:
                 # 좌표, 신뢰도, 클래스 추출
@@ -118,7 +148,7 @@ def process_image_yolo(input_path, output_path):
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 label = yolo_model.names[cls_id]
-                
+
                 # 프론트엔드 포맷(objects 배열)에 맞게 구성
                 objects.append({
                     "box": [x1, y1, x2, y2],
@@ -131,6 +161,7 @@ def process_image_yolo(input_path, output_path):
     # 분석이 완료된 이미지를 파일로 저장
     cv2.imwrite(output_path, img)
     return objects
+
 
 def execute_ai_analysis(media_id):
     """
@@ -148,26 +179,26 @@ def execute_ai_analysis(media_id):
             if not row:
                 print(f"[{media_id}] 미디어 파일을 찾을 수 없습니다.")
                 return
-            
+
             stored_path = row['stored_path']
             file_type = row['file_type']
-            
+
             if file_type == 'VIDEO':
                 # 처리된 비디오 파일명 생성 로직 (원본 파일명 뒤에 _processed 추가)
                 base_name, ext = os.path.splitext(stored_path)
                 # [수정] 코덱을 vp80으로 변경함에 따라 호환되는 컨테이너 포맷인 .webm 확장자로 저장하도록 파일 확장자를 변경함.
                 processed_path = f"{base_name}_processed.webm"
-                
+
                 try:
                     # YOLO를 이용한 비디오 분석 및 저장 수행
                     analysis_data = process_video_yolo(stored_path, processed_path)
-                    
+
                     # 프레임별 태그 정보와 생성된 비디오 파일 이름을 포함하여 JSON 생성
                     final_result = {
                         "processed_video_path": os.path.basename(processed_path),
                         "frame_tags": analysis_data
                     }
-                    
+
                     # 성공적으로 처리된 결과를 데이터베이스에 업데이트
                     sql = "UPDATE analysis_results SET status = 'SUCCESS', result_json = %s WHERE media_id = %s"
                     cursor.execute(sql, (json.dumps(final_result), media_id))
@@ -181,17 +212,17 @@ def execute_ai_analysis(media_id):
                 # 이미지 파일에 대한 실제 AI 분석 수행 로직으로 교체
                 base_name, ext = os.path.splitext(stored_path)
                 processed_path = f"{base_name}_processed{ext}"
-                
+
                 try:
                     # process_image_yolo 함수를 통해 추론 및 이미지 생성 수행
                     objects_data = process_image_yolo(stored_path, processed_path)
-                    
+
                     # 프론트엔드가 요구하는 포맷으로 JSON 생성
                     final_result = {
                         "objects": objects_data,
                         "processed_image_path": os.path.basename(processed_path)
                     }
-                    
+
                     # DB에 분석 결과(JSON 형태)를 업데이트
                     sql = "UPDATE analysis_results SET status = 'SUCCESS', result_json = %s WHERE media_id = %s"
                     cursor.execute(sql, (json.dumps(final_result), media_id))
@@ -201,11 +232,12 @@ def execute_ai_analysis(media_id):
                     print(f"[{media_id}] 이미지 처리 중 오류 발생: {e}")
                     cursor.execute("UPDATE analysis_results SET status = 'FAIL' WHERE media_id = %s", (media_id,))
                     conn.commit()
-                
+
     except Exception as e:
         print(f"[{media_id}] 분석 DB 연동 오류: {e}")
     finally:
         conn.close()
+
 
 def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
     filename = secure_filename(file.filename)
@@ -231,14 +263,14 @@ def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
             media_id = cursor.lastrowid
             cursor.execute("INSERT INTO analysis_results (media_id, status) VALUES (%s, 'PENDING')", (media_id,))
             conn.commit()
-            
+
             # [요청이 완료되면 넘어가도록 변경]
             # 기존에는 스레드를 사용하여 비동기로 분석을 처리하고 상태를 polling 했으나,
             # 요청 자체에서 분석이 완료될 때까지 대기하도록 동기 처리 방식으로 변경합니다.
             # thread = threading.Thread(target=execute_ai_analysis, args=(media_id,), daemon=True)
             # thread.start()
             execute_ai_analysis(media_id)
-            
+
             return media_id
     except Exception as e:
         conn.rollback()
@@ -247,6 +279,7 @@ def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
         raise e
     finally:
         conn.close()
+
 
 def get_status(media_id):
     conn = Session.get_connection()
@@ -262,6 +295,7 @@ def get_status(media_id):
     finally:
         conn.close()
 
+
 # ===============================================
 # Flask Routes
 # ===============================================
@@ -274,6 +308,7 @@ def file_too_large(e):
     else:
         max_size = f"{max_bytes // (1024 * 1024)}MB"
     return jsonify({"status": "error", "message": f"업로드 가능한 최대 용량({max_size})을 초과했습니다."}), 413
+
 
 @app.route('/join', methods=['GET', 'POST'])
 def join():
@@ -318,9 +353,7 @@ def join():
         return "<script>alert('치명적인 오류가 발생했습니다. 다시 시도해주세요'); history.back();</script>"
 
 
-
-
-@app.route('/check_uid') # /check_uid URL로 접속하면 이 함수 실행 GET방식으로 요청 받음
+@app.route('/check_uid')  # /check_uid URL로 접속하면 이 함수 실행 GET방식으로 요청 받음
 def check_uid():
     uid = request.args.get('uid')
 
@@ -333,13 +366,11 @@ def check_uid():
                 (uid,)
             )
             if cursor.fetchone():
-                return {"exists": True} # 아이디 이미 사용 중(다른 사람이 쓰는중)
+                return {"exists": True}  # 아이디 이미 사용 중(다른 사람이 쓰는중)
             else:
-                return {"exists": False} # 사용 가능
+                return {"exists": False}  # 사용 가능
     finally:
         conn.close()
-
-
 
 
 @app.route("/login", methods=['GET', 'POST'])
@@ -374,9 +405,6 @@ def login():
         return render_template('login.html', error="치명적 오류 발생, 다시 시도해주세요")
 
 
-
-
-
 @app.route('/find_id', methods=['GET', 'POST'])
 def find_id():
     if request.method == 'GET':
@@ -400,13 +428,11 @@ def find_id():
         conn.close()
 
 
-
-
-
 @app.route('/logout')
 def logout():
     session.clear()
     return "<script>alert('로그아웃을 성공했습니다!'); location.href='/';</script>"
+
 
 @app.route('/member/edit', methods=['GET', 'POST'])
 def member_edit():
@@ -424,6 +450,13 @@ def member_edit():
         new_email = request.form.get('email')
         new_pw = request.form.get('pw')
         new_memo = request.form.get('bio')
+
+        # 기존 정보 보존 로직 추가: 빈 칸일 경우 기존 정보를 유지
+        user_info = get_user_info(session['user_id'])
+        if not new_uid: new_uid = user_info['uid']
+        if not new_name: new_name = user_info['name']
+        if not new_email: new_email = user_info['email']
+        if not new_memo: new_memo = user_info['bio']
 
         # [수정] 회원정보 수정 시 프로필 이미지와 bio를 함께 처리하도록 로직 병합
         # 기존 /upload_profile에 있던 파일 저장 로직을 이곳으로 이동했습니다.
@@ -460,7 +493,7 @@ def member_edit():
                     else:
                         sql = "INSERT INTO members (id, profile_image) VALUES (%s, %s)"
                         cursor.execute(sql, (session['user_id'], unique_filename))
-                        
+
                 conn.commit()
                 updated = True
         except Exception as e:
@@ -475,11 +508,12 @@ def member_edit():
             session['user_name'] = new_name
             return "<script>alert('회원정보 수정을 완료했습니다.'); location.href = '/mypage';</script>"
         else:
-             return "<script>alert('수정 도중 오류가 발생했습니다.'); history.back();</script>"
+            return "<script>alert('수정 도중 오류가 발생했습니다.'); history.back();</script>"
 
     except Exception as e:
         print(f'치명적 오류 발생{e}')
         return redirect(url_for('login'))
+
 
 @app.route('/mypage')
 def mypage():
@@ -509,6 +543,7 @@ def mypage():
         conn.close()
 
     return render_template('mypage.html', user=user_info, analysis_results=analysis_results)
+
 
 @app.route('/member/delete/<int:user_id>', methods=['GET'])
 def member_delete_route(user_id):
@@ -551,6 +586,7 @@ def analyze():
             return jsonify({"status": "error", "message": str(e)}), 500
     return render_template('analyze.html')
 
+
 @app.route('/analyze/result', methods=['POST'])
 def analyze_result():
     if 'user_id' not in session:
@@ -570,6 +606,7 @@ def analyze_result():
     except Exception as e:
         print(f"업로드 오류: {e}")
         return jsonify({"status": "error", "message": "서버 오류가 발생했습니다."}), 500
+
 
 # [기존 폴링용 상태 확인 API 주석 처리 시작]
 # 더 이상 비동기 폴링을 사용하지 않으므로 상태 확인 API를 비활성화합니다.
@@ -605,6 +642,8 @@ def get_analysis_status(media_id):
         })
     return jsonify({"status": "not_found"}), 404
 '''
+
+
 # [기존 폴링용 상태 확인 API 주석 처리 끝]
 
 @app.route('/analyze/analysis/<int:media_id>')
@@ -634,7 +673,7 @@ def analysis_detail(media_id):
                 # 이렇게 해야 템플릿이나 다른 로직에서 쉽게 접근할 수 있습니다.
                 if isinstance(analysis_data['result_json'], str):
                     analysis_data['result_json'] = json.loads(analysis_data['result_json'])
-                
+
                 # AI 분석 결과(result_json)를 사람이 읽기 좋은 형태의 문자열로 가공합니다.
                 # 비디오와 이미지에 따라 결과 구조가 다르므로 분기하여 처리합니다.
                 try:
@@ -651,7 +690,7 @@ def analysis_detail(media_id):
                         if not objects:
                             formatted_text = "검출된 객체가 없습니다."
                         else:
-                            lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)" 
+                            lines = [f"[{i}] {obj['label']} (신뢰도: {obj['score'] * 100:.1f}%)"
                                      for i, obj in enumerate(objects, 1)]
                             formatted_text = "\n".join(lines)
                         analysis_data['formatted_result'] = formatted_text
@@ -667,6 +706,7 @@ def analysis_detail(media_id):
         return "분석 데이터를 찾을 수 없거나 접근 권한이 없습니다.", 404
 
     return render_template('analyze_analysis.html', analysis_data=analysis_data)
+
 
 """
 @app.route('/media/update/<int:media_id>', methods=['POST'])
@@ -714,6 +754,7 @@ def file_update(media_id):
         return jsonify({"status": "error", "message": "파일 교체를 실패하였습니다"}), 400
 """
 
+
 @app.route('/media/delete/<int:media_id>', methods=['POST'])
 def delete_media_file(media_id):
     if 'user_id' not in session:
@@ -733,32 +774,35 @@ def delete_media_file(media_id):
             """
             cursor.execute(sql_select, (media_id, session['user_id']))
             row = cursor.fetchone()
-            
+
             if row:
                 file_paths_to_delete = []
-                
+
                 # 1. 원본 미디어 파일 경로 추가
                 if row.get('stored_path'):
                     file_paths_to_delete.append(os.path.abspath(row['stored_path']))
-                
+
                 # 2. 파생 파일 (AI 분석 결과 비디오 등) 경로 추출 및 추가
                 if row.get('result_json'):
                     try:
-                        result_data = json.loads(row['result_json']) if isinstance(row['result_json'], str) else row['result_json']
+                        result_data = json.loads(row['result_json']) if isinstance(row['result_json'], str) else row[
+                            'result_json']
                         # process_video_yolo 등에서 생성하여 result_json에 저장한 파일명 키 확인
                         for key in ['processed_video_path', 'processed_image_path']:
                             if key in result_data and result_data[key]:
                                 processed_filename = result_data[key]
-                                processed_path = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], processed_filename))
+                                processed_path = os.path.abspath(
+                                    os.path.join(app.config['UPLOAD_FOLDER'], processed_filename))
                                 file_paths_to_delete.append(processed_path)
                     except Exception as e:
                         print(f"[{media_id}] result_json 파싱 중 오류 발생 (파생 파일 확인 불가): {e}")
 
                 # 3. 데이터베이스 레코드 삭제 (외래키 제약조건이 없으므로 자식 테이블부터 삭제)
                 cursor.execute("DELETE FROM analysis_results WHERE media_id = %s", (media_id,))
-                cursor.execute("DELETE FROM media_files WHERE id = %s AND member_id = %s", (media_id, session['user_id']))
+                cursor.execute("DELETE FROM media_files WHERE id = %s AND member_id = %s",
+                               (media_id, session['user_id']))
                 conn.commit()
-                
+
                 # 4. 수집된 모든 파일들을 서버 파일 시스템에서 일괄 삭제 (예외 처리 포함)
                 for f_path in file_paths_to_delete:
                     if os.path.exists(f_path):
@@ -766,7 +810,7 @@ def delete_media_file(media_id):
                             os.remove(f_path)
                         except OSError as e:
                             print(f"[경고] 파일 삭제 실패 ({f_path}): {e}")
-                
+
                 success = True
     except Exception as e:
         conn.rollback()
@@ -805,11 +849,6 @@ def analyze_list():
     return render_template('analyze_list.html', analyze_list=analysis_list_data)
 
 
-
-
-
-
-
 @app.route('/introduce')
 def introduce():
     return render_template('introduce.html')
@@ -818,6 +857,7 @@ def introduce():
 @app.route('/')
 def index():
     return render_template('main.html')
+
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
