@@ -17,19 +17,19 @@ body, p, a, div, span, button {
 
 /* 메뉴 상단 고정 */
 .top-nav {
-    position: fixed; /* 화면에 고정 */
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
-    z-index: 1000; /* 다른 요소보다 위에 보이도록 */
+    z-index: 1000;
 }
 
-/* 메인 컨테이너: 두 박스를 가로로 나열하고 중앙 정렬 */
+/* 메인 컨테이너 */
 .main-container {
     display: flex;
-    justify-content: center; /* 가로 중앙 */
-    align-items: stretch; /* 두 박스의 높이를 동일하게 맞춤 */
-    gap: 30px; /* 박스 사이 간격 */
+    justify-content: center;
+    align-items: stretch;
+    gap: 30px;
     margin-top: 40px;
     width: 100%;
     max-width: 1000px; /* 전체적인 최대 너비 제한 */

@@ -56,62 +56,6 @@
             <div class="button-group">
             </div>
         </div>
-
-        {% if session.get('user_name') %}
-        <div class="main-container">
-            <div class="history-section">
-                <div class="history-slider">
-                    <div class="slider-wrapper" id="sliderWrapper">
-                        <div class="slide-item">최근 기록 1: 장애물 감지</div>
-                        <div class="slide-item">최근 기록 2: 차량 번호 인식</div>
-                        <div class="slide-item">최근 기록 3: 보행자 주의</div>
-                        <div class="slide-item">최근 기록 4: 신호등 상태 확인</div>
-                    </div>
-                </div>
-                <div class="indicator-container">
-                    <div class="dot active" onclick="goToSlide(0)"></div>
-                    <div class="dot" onclick="goToSlide(1)"></div>
-                    <div class="dot" onclick="goToSlide(2)"></div>
-                    <div class="dot" onclick="goToSlide(3)"></div>
-                </div>
-            </div>
-
-            <div class="result-card">
-                <h2 class="result-header">실시간 이미지 분석 결과</h2>
-                <div class="result-body">
-                    <img src="{{ user_image_path }}" alt="분석 이미지" class="analysis-img">
-                    <div class="result-text">
-                        <p class="data-label">분석 대상: <span class="data-value">도로 위 장애물</span></p>
-                        <p class="data-label">정확도: <span class="data-value">98.2%</span></p>
-                        <p class="data-status">상태: <span class="status-tag">분석 완료</span></p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
-
-<script>
-    const wrapper = document.getElementById('sliderWrapper');
-    const dots = document.querySelectorAll('.dot');
-    let currentIndex = 0;
-
-    function nextSlide() {
-        // wrapper가 존재할 때만 실행 (로그인 상태일 때만)
-        if (!wrapper) return;
-
-        currentIndex = (currentIndex + 1) % 4;
-        wrapper.style.transform = `translateY(-${currentIndex * 400}px)`;
-        dots.forEach((dot, index) => {
-            dot.classList.toggle('active', index === currentIndex);
-        });
-    }
-
-    // wrapper가 있을 때만 인터벌 시작
-    if (wrapper) {
-        setInterval(nextSlide, 10000);
-    }
-</script>
-
 </body>
