@@ -248,6 +248,21 @@ body, p, a, div, span, button {
     box-shadow: 0 5px 15px rgba(255, 255, 255, 0.2);
 }
 
+    /* 기본 글쓰기 버튼 스타일 (인라인 대신 여기서 설정) */
+.write-btn {
+    background: rgba(0, 209, 178, 0.15);
+    border: 2px solid #00d1b2;
+    color: white; /* 기본 글자색 */
+}
+
+/* 모든 hero-btn에 대한 hover 효과 */
+.hero-btn:hover {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #ffffff !important;
+    transition: all 0.3s ease;
+}
+
 .top-nav {
     position: absolute; /* hero-container 위에 띄움 */
     top: 0;
