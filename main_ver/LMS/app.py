@@ -849,6 +849,173 @@ def analyze_list():
     return render_template('analyze_list.html', analyze_list=analysis_list_data)
 
 
+
+@app.route('/board/list')
+def board_list():
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 게시글 정보와 작성자 이름을 함께 JOIN하여 가져옴
+            sql = """
+                SELECT b.id, b.title, b.regdate, b.readcount, m.name as writer_name 
+                FROM boards b
+                JOIN members m ON b.member_id = m.id
+                ORDER BY b.id DESC
+            """
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            return render_template('board_list.html', boards=rows)
+    except Exception as e:
+        print(f"게시판 목록 오류: {e}")
+        return "<script>alert('게시판 목록을 불러오는 중 오류가 발생했습니다.'); history.back();</script>"
+    finally:
+        conn.close()
+
+
+@app.route('/board/write', methods=['GET'])
+def board_write():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('board_write.html')
+
+
+@app.route('/board/write_pro', methods=['POST'])
+def board_write_pro():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    title = request.form.get('title')
+    content = request.form.get('content')
+    member_id = session['user_id']
+    
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            sql = "INSERT INTO boards (member_id, title, content) VALUES (%s, %s, %s)"
+            cursor.execute(sql, (member_id, title, content))
+            conn.commit()
+            return redirect(url_for('board_list'))
+    except Exception as e:
+        conn.rollback()
+        print(f"게시글 작성 오류: {e}")
+        return "<script>alert('글을 저장하는 중 오류가 발생했습니다.'); history.back();</script>"
+    finally:
+        conn.close()
+
+
+@app.route('/board/view/<int:board_id>')
+def board_view(board_id):
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 조회수 증가
+            update_sql = "UPDATE boards SET readcount = readcount + 1 WHERE id = %s"
+            cursor.execute(update_sql, (board_id,))
+            conn.commit()
+            
+            # 게시글 상세 내용 가져오기
+            select_sql = """
+                SELECT b.*, m.name as writer_name 
+                FROM boards b
+                JOIN members m ON b.member_id = m.id
+                WHERE b.id = %s
+            """
+            cursor.execute(select_sql, (board_id,))
+            board = cursor.fetchone()
+            
+            if board:
+                return render_template('board_view.html', board=board, comments=[])
+            else:
+                return "<script>alert('존재하지 않는 게시글입니다.'); location.href='/board/list';</script>"
+    except Exception as e:
+        print(f"게시글 조회 오류: {e}")
+        return "<script>alert('글을 불러오는 중 오류가 발생했습니다.'); history.back();</script>"
+    finally:
+        conn.close()
+
+
+@app.route('/board/edit/<int:board_id>')
+def board_edit(board_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            sql = "SELECT * FROM boards WHERE id = %s"
+            cursor.execute(sql, (board_id,))
+            board = cursor.fetchone()
+            
+            if not board:
+                return "<script>alert('게시글을 찾을 수 없습니다.'); location.href='/board/list';</script>"
+                
+            if board['member_id'] != session['user_id']:
+                return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
+                
+            return render_template('board_edit.html', board=board)
+    finally:
+        conn.close()
+
+
+@app.route('/board/edit_pro', methods=['POST'])
+def board_edit_pro():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    board_id = request.form.get('id')
+    title = request.form.get('title')
+    content = request.form.get('content')
+    
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 작성자 본인인지 2차 확인
+            cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
+            board = cursor.fetchone()
+            
+            if not board or board['member_id'] != session['user_id']:
+                return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
+                
+            sql = "UPDATE boards SET title = %s, content = %s WHERE id = %s"
+            cursor.execute(sql, (title, content, board_id))
+            conn.commit()
+            
+            return f"<script>alert('정상적으로 수정되었습니다.'); location.href='/board/view/{board_id}';</script>"
+    except Exception as e:
+        conn.rollback()
+        print(f"게시글 수정 오류: {e}")
+        return "<script>alert('수정 중 오류가 발생했습니다.'); history.back();</script>"
+    finally:
+        conn.close()
+
+
+@app.route('/board/delete/<int:board_id>')
+def board_delete(board_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 권한 체크
+            cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
+            board = cursor.fetchone()
+            
+            if not board or board['member_id'] != session['user_id']:
+                return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
+                
+            cursor.execute("DELETE FROM boards WHERE id = %s", (board_id,))
+            conn.commit()
+            
+            return "<script>alert('게시글이 삭제되었습니다.'); location.href='/board/list';</script>"
+    except Exception as e:
+        conn.rollback()
+        print(f"게시글 삭제 오류: {e}")
+        return "<script>alert('삭제 중 오류가 발생했습니다.'); history.back();</script>"
+    finally:
+        conn.close()
+
+
 @app.route('/introduce')
 def introduce():
     return render_template('introduce.html')
