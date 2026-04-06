@@ -17,8 +17,8 @@ app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 
 # YOLOv8 모델 초기화 (커스텀 학습된 모델 로드)
 # 아키텍처(CPU) 서버 환경 구동을 위해 변환된 ONNX 경량화 모델을 사용하며, 파일이 없으면 자동 변환합니다.
-onnx_path = 'bestv3.onnx'
-pt_path = 'bestv3.pt'
+onnx_path = 'best (2).onnx'
+pt_path = 'best (2).pt'
 
 if not os.path.exists(onnx_path) and os.path.exists(pt_path):
     print("🚀 [최초 시작 감지] 경량화된 ONNX 모델이 없습니다. 자동 변환을 수행합니다... (수 분 소요됨)")
@@ -1016,6 +1016,87 @@ def board_delete(board_id):
         conn.close()
 
 
+# ===============================================
+# Admin Routes
+# ===============================================
+
+def admin_required():
+    """관리자 권한 확인 헬퍼 함수. 권한 없으면 리다이렉트 응답 반환, 정상이면 None 반환."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if session.get('user_role') != 'admin':
+        return "<script>alert('관리자만 접근할 수 있습니다.'); history.back();</script>"
+    return None
+
+
+@app.route('/admin/members')
+def admin_members():
+    guard = admin_required()
+    if guard:
+        return guard
+
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 비밀번호(password) 컬럼 제외하고 조회
+            cursor.execute("""
+                SELECT id, uid, name, email, role, active, bio, profile_image
+                FROM members
+                ORDER BY id DESC
+            """)
+            members = cursor.fetchall()
+    finally:
+        conn.close()
+    return render_template('admin_members.html', members=members)
+
+
+@app.route('/admin/boards')
+def admin_boards():
+    guard = admin_required()
+    if guard:
+        return guard
+
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT b.id, b.title, b.content, b.readcount, b.regdate,
+                       m.name AS writer_name, m.uid AS writer_uid
+                FROM boards b
+                JOIN members m ON b.member_id = m.id
+                ORDER BY b.id DESC
+            """)
+            boards = cursor.fetchall()
+    finally:
+        conn.close()
+    return render_template('admin_boards.html', boards=boards)
+
+
+@app.route('/admin/analyze')
+def admin_analyze():
+    guard = admin_required()
+    if guard:
+        return guard
+
+    conn = Session.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    mf.id, mf.file_name, mf.file_type, mf.memo, mf.uploaded_at, mf.stored_path,
+                    ar.status, ar.result_json,
+                    m.name AS uploader_name, m.uid AS uploader_uid
+                FROM media_files mf
+                LEFT JOIN analysis_results ar ON mf.id = ar.media_id
+                JOIN members m ON mf.member_id = m.id
+                ORDER BY mf.id DESC
+            """)
+            analyze_list = cursor.fetchall()
+    finally:
+        conn.close()
+    return render_template('admin_analyze.html', analyze_list=analyze_list)
+
+
 @app.route('/introduce')
 def introduce():
     return render_template('introduce.html')
@@ -1038,3 +1119,4 @@ def uploaded_file(filename):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+

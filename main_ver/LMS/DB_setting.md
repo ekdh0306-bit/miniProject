@@ -43,5 +43,6 @@ CREATE TABLE boards (
     title varchar(255) NOT NULL,
     content text NOT NULL,
     readcount INT DEFAULT 0,
-    regdate datetime default current_timestamp
+    regdate datetime default current_timestamp,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
 );

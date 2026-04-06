@@ -1,0 +1,77 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container" style="min-height: 100vh; height: auto; padding-bottom: 80px;">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+        <h1 class="welcome-title" style="font-size: 3rem; margin-bottom: 0.5rem;">관리자 - 문의 게시판</h1>
+        <p style="color: rgba(255,255,255,0.5); margin-bottom: 2rem;">총 <span style="color:#00d1b2;">{{ boards|length }}</span>개의 게시글이 있습니다.</p>
+
+        <!-- 관리자 탭 네비게이션 -->
+        <div style="display: flex; gap: 12px; margin-bottom: 30px;">
+            <a href="/admin/members" style="padding: 10px 24px; border-radius: 50px; background: rgba(255,255,255,0.1); color: white; text-decoration: none; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.2);">회원 목록</a>
+            <a href="/admin/boards" style="padding: 10px 24px; border-radius: 50px; background: #00d1b2; color: black; font-weight: bold; text-decoration: none; font-size: 0.9rem;">문의 게시판</a>
+            <a href="/admin/analyze" style="padding: 10px 24px; border-radius: 50px; background: rgba(255,255,255,0.1); color: white; text-decoration: none; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.2);">AI 분석 목록</a>
+        </div>
+
+        <div class="result-card" style="height: auto; padding: 20px 30px; border-radius: 20px; width: 100%; max-width: 1100px;">
+            <div class="table-responsive">
+                <table style="width: 100%; border-collapse: collapse; color: white; table-layout: fixed;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #00d1b2;">
+                            <th style="width: 6%; text-align: center; color: #00d1b2; padding: 12px 0;">번호</th>
+                            <th style="width: 38%; text-align: center; color: #00d1b2; padding: 12px 0;">제목</th>
+                            <th style="width: 14%; text-align: center; color: #00d1b2; padding: 12px 0;">작성자</th>
+                            <th style="width: 10%; text-align: center; color: #00d1b2; padding: 12px 0;">아이디</th>
+                            <th style="width: 18%; text-align: center; color: #00d1b2; padding: 12px 0;">날짜</th>
+                            <th style="width: 8%; text-align: center; color: #00d1b2; padding: 12px 0;">조회</th>
+                            <th style="width: 6%; text-align: center; color: #00d1b2; padding: 12px 0;">상세</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for board in boards %}
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: 0.3s; cursor: pointer;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.04)'"
+                            onmouseout="this.style.background='transparent'"
+                            onclick="toggleContent({{ board.id }})">
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.5); font-size: 0.85rem;">{{ board.id }}</td>
+                            <td style="text-align: left; padding: 16px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ board.title }}</td>
+                            <td style="text-align: center; padding: 16px 0;">{{ board.writer_name }}</td>
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.5); font-size: 0.85rem;">{{ board.writer_uid }}</td>
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.5); font-size: 0.85rem;">{{ board.regdate }}</td>
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.5);">{{ board.readcount }}</td>
+                            <td style="text-align: center; padding: 16px 0;">
+                                <a href="/board/view/{{ board.id }}" onclick="event.stopPropagation();"
+                                   style="color: #00d1b2; font-size: 0.85rem; text-decoration: none;">보기</a>
+                            </td>
+                        </tr>
+                        <!-- 본문 펼치기 행 -->
+                        <tr id="content-{{ board.id }}" style="display: none;">
+                            <td colspan="7" style="padding: 0 20px 20px 20px;">
+                                <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px 20px; color: rgba(255,255,255,0.8); font-size: 0.9rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word;">{{ board.content }}</div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px 0; color: rgba(255,255,255,0.3);">게시글이 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleContent(id) {
+        const row = document.getElementById('content-' + id);
+        if (row.style.display === 'none') {
+            row.style.display = 'table-row';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}
