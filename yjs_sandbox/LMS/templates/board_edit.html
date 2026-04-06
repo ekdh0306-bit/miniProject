@@ -1,39 +1,54 @@
-{% extends "layout.html" %}
+{% extends "menu_layout.html" %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h3 class="mb-0">게시글 수정</h3>
-    <small class="text-muted">내용을 수정한 뒤 저장하세요.</small>
-  </div>
-  <a href="/board" class="btn btn-outline-secondary">목록</a>
-</div>
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+    
+    <div class="hero-content">
+        <h1 class="welcome-title" style="font-size: 3rem; margin-bottom: 2rem;">글 수정</h1>
 
-<div class="card shadow-sm">
-  <div class="card-body">
-    {#
-      권장: 컨트롤러에서 board 객체를 조회해 board=board 로 넘기면 가장 깔끔합니다.
-      현재 app.py에서는 title/content가 request.form 기반이라 GET에서는 None일 수 있어요.
-    #}
+        <div class="main-container" style="max-width: 1000px; flex-direction: column; align-items: stretch; width: 100%; padding: 0 20px;">
+            
+            <div style="display: flex; justify-content: flex-start; margin-bottom: 10px;">
+                <a href="/board/view/{{ board.id }}" class="hero-btn" style="width: 100px; height: 40px; font-size: 0.9rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.2);">
+                    <i class="bi bi-x-lg"></i> 취소
+                </a>
+            </div>
 
-    <form method="post" action="">
-      <div class="mb-3">
-        <label class="form-label">제목</label>
-        <input type="text" name="title" class="form-control" maxlength="200"
-               value="{% if board is defined and board %}{{ board.title }}{% else %}{{ title or '' }}{% endif %}" required>
-      </div>
+            <div class="result-card" style="height: auto; padding: 40px; border-radius: 20px; width: 100%; text-align: left;">
+                <form action="/board/edit_pro" method="POST">
+                    <input type="hidden" name="id" value="{{ board.id }}">
+                    
+                    <div style="margin-bottom: 25px;">
+                        <label style="color: #00d1b2; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 1rem;">
+                            <i class="bi bi-pencil-square"></i> 제목 수정
+                        </label>
+                        <input type="text" name="title" value="{{ board.title }}" required
+                               style="width: 100%; height: 50px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(0, 209, 178, 0.3); 
+                                      border-radius: 12px; color: white; padding: 0 20px; font-size: 1.1rem; outline: none;
+                                      font-family: 'Pretendard', sans-serif;">
+                    </div>
 
-      <div class="mb-3">
-        <label class="form-label">내용</label>
-        <textarea name="content" class="form-control" rows="10" required>{% if board is defined and board %}{{ board.content }}{% else %}{{ content or '' }}{% endif %}</textarea>
-      </div>
+                    <div style="margin-bottom: 30px;">
+                        <label style="color: #00d1b2; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 1rem;">
+                            <i class="bi bi-chat-left-text"></i> 내용 수정
+                        </label>
+                        <textarea name="content" required
+                                  style="width: 100%; min-height: 400px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); 
+                                         border-radius: 15px; color: white; padding: 20px; font-size: 1.05rem; line-height: 1.7; 
+                                         resize: none; outline: none; font-family: 'Pretendard', sans-serif;">{{ board.content }}</textarea>
+                    </div>
 
-      <div class="d-flex justify-content-between align-items-center">
-        <a href="/board" class="btn btn-light">취소</a>
-        <div class="d-flex gap-2">
-          <button type="submit" class="btn btn-primary">저장</button>
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button type="submit" class="hero-btn" 
+                                style="width: 160px; height: 50px; font-weight: 700; border-radius: 50px; 
+                                       background: rgba(0, 209, 178, 0.15); border: 2px solid #00d1b2; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            수정완료 <i class="bi bi-check-lg"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
-      </div>
-    </form>
-  </div>
+    </div>
 </div>
 {% endblock %}

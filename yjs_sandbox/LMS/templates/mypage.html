@@ -8,8 +8,22 @@
     <div class="hero-content"
          style="max-width: 1200px; width: 95%; display: flex; flex-direction: row; align-items: stretch; gap: 40px; flex-wrap: wrap; justify-content: center; padding: 100px 0;">
 
-        <div class="register-card" style="flex: 1; max-width: 500px; min-width: 350px; display: flex; flex-direction: column; margin: 0;">
-            <h2 class="register-title"><a href="/" style="text-decoration: none; color: inherit;">내 정보 확인</a></h2>
+        <div class="register-card">
+            <h2 class="register-title">내 정보 확인</h2>
+
+            <div class="profile-section">
+                <div class="profile-circle">
+                    {% if user.profile_image %}
+                    <img src="{{ url_for('uploaded_file', filename=user.profile_image) }}" alt="프로필">
+                    {% else %}
+                    <span style="font-size: 2.8rem; color: var(--primary-color);">👤</span>
+                    {% endif %}
+                </div>
+
+                <div class="profile-bio-balloon">
+                    <p style="margin: 0;">{{ user.bio or '등록된 한 줄 소개가 없습니다.' }}</p>
+                </div>
+            </div>
 
             <div class="input-group">
                 <label>아이디</label>
@@ -30,28 +44,31 @@
             </div>
         </div>
 
-        <div class="register-card" style="flex: 1; max-width: 500px; min-width: 350px; display: flex; flex-direction: column; margin: 0;">
+        <div class="register-card"
+             style="flex: 1; max-width: 500px; min-width: 350px; display: flex; flex-direction: column; margin: 0;">
             <h3 class="register-title" style="font-size: 1.8rem; margin-bottom: 25px;">최근 분석 결과</h3>
 
             <div class="result-list">
                 {% if analysis_results %}
-                    {% for result in analysis_results %}
-                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
-                        <a href="{{ url_for('analysis_detail', media_id=result.id) }}" style="text-decoration: none; color: inherit;">
-                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <span class="status-tag" style="font-size: 0.75rem; background: #00d1b2; padding: 4px 8px; border-radius: 8px;">{{ result.status }}</span>
-                                <span style="font-size: 0.8rem; color: #aaa;">{{ result.uploaded_at.strftime('%Y-%m-%d') }}</span>
-                            </div>
-                            <p style="margin-top: 8px; font-size: 0.95rem; color: #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                {{ result.memo or '메모 없음' }}
-                            </p>
-                        </a>
-                    </div>
-                    {% endfor %}
+                {% for result in analysis_results %}
+                <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                    <a href="{{ url_for('analysis_detail', media_id=result.id) }}"
+                       style="text-decoration: none; color: inherit;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="status-tag"
+                                  style="font-size: 0.75rem; background: #00d1b2; padding: 4px 8px; border-radius: 8px;">{{ result.status }}</span>
+                            <span style="font-size: 0.8rem; color: #aaa;">{{ result.uploaded_at.strftime('%Y-%m-%d') }}</span>
+                        </div>
+                        <p style="margin-top: 8px; font-size: 0.95rem; color: #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {{ result.memo or '메모 없음' }}
+                        </p>
+                    </a>
+                </div>
+                {% endfor %}
                 {% else %}
-                    <div style="padding: 40px 0; text-align: center; color: rgba(255,255,255,0.4);">
-                        데이터가 없습니다.
-                    </div>
+                <div style="padding: 40px 0; text-align: center; color: rgba(255,255,255,0.4);">
+                    데이터가 없습니다.
+                </div>
                 {% endif %}
             </div>
         </div>

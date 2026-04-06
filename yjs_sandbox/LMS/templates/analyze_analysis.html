@@ -16,9 +16,18 @@
                         {% if analysis_data %}
                             {% set filename = analysis_data.stored_path.split('/')[-1].split('\\')[-1] %}
                             {% if analysis_data.file_type == 'IMAGE' %}
-                                <img src="{{ url_for('uploaded_file', filename=filename) }}" style="width:100%; height: auto; display: block;">
+                                {% set image_filename = filename %}
+                                {% if analysis_data.result_json and analysis_data.result_json.processed_image_path %}
+                                    {% set image_filename = analysis_data.result_json.processed_image_path.split('/')[-1].split('\\')[-1] %}
+                                {% endif %}
+                                <!-- 백엔드에서 전달받은 처리된 이미지(processed_image_path)가 있으면 해당 이미지를 출력하고, 없으면 원본 이미지 출력 -->
+                                <img src="{{ url_for('uploaded_file', filename=image_filename) }}" style="width:100%; height: auto; display: block;">
                             {% elif analysis_data.file_type == 'VIDEO' %}
-                                <video src="{{ url_for('uploaded_file', filename=filename) }}" controls style="width:100%; height: auto; display: block;"></video>
+                                {% set video_filename = filename %}
+                                {% if analysis_data.result_json and analysis_data.result_json.processed_video_path %}
+                                    {% set video_filename = analysis_data.result_json.processed_video_path %}
+                                {% endif %}
+                                <video id="analysis-video" src="{{ url_for('uploaded_file', filename=video_filename) }}" controls style="width:100%; height: auto; display: block;"></video>
                             {% else %}
                                 <p>미리보기를 지원하지 않는 파일 형식입니다.</p>
                             {% endif %}
@@ -60,5 +69,50 @@
     </div>
 </div>
 
+<script>
+    // 프론트엔드에서 비디오 재생 시간에 맞춰 프레임별 태그 정보를 화면에 동기화하여 표시하는 기능 추가
+    // 원래 이미지에 대해서만 처리하던 텍스트 출력을, 비디오의 경우 timeupdate 이벤트와 연동하여 동적으로 변경
+    {% if analysis_data.file_type == 'VIDEO' and analysis_data.result_json and analysis_data.result_json.frame_tags %}
+    document.addEventListener('DOMContentLoaded', function() {
+        const video = document.getElementById('analysis-video');
+        const resultView = document.getElementById('view-result');
+        // 백엔드에서 생성한 프레임별 태그 데이터 (JSON 형식)
+        const frameTags = {{ analysis_data.result_json.frame_tags | tojson | safe }};
+        
+        if (video && frameTags) {
+            // 시간 키를 미리 정렬해두어 현재 재생 시간에 맞는 태그를 빨리 찾을 수 있도록 함
+            const timeKeys = Object.keys(frameTags).map(Number).sort((a, b) => a - b);
+            
+            video.addEventListener('timeupdate', function() {
+                const currentTime = video.currentTime;
+                let closestTime = 0;
+                
+                // 현재 비디오 재생 시간보다 작거나 같은 가장 최근의 분석 프레임 시간 찾기
+                for (let i = 0; i < timeKeys.length; i++) {
+                    if (timeKeys[i] <= currentTime) {
+                        closestTime = timeKeys[i];
+                    } else {
+                        break;
+                    }
+                }
+                
+                // 찾은 시간에 해당하는 객체 태그 목록 가져오기
+                const timeKeyStr = closestTime.toFixed(2);
+                const tags = frameTags[timeKeyStr];
+                
+                // 화면에 동기화하여 표시 (기존의 정적 텍스트를 실시간으로 교체)
+                if (tags && tags.length > 0) {
+                    let html = `<span style="color:#00d1b2; font-weight:bold;">[${timeKeyStr}초]</span> 검출된 객체:<br><br>`;
+                    tags.forEach((tag, idx) => {
+                        html += `[${idx+1}] ${tag}<br>`;
+                    });
+                    resultView.innerHTML = html;
+                } else {
+                    resultView.innerHTML = `<span style="color:#00d1b2; font-weight:bold;">[${timeKeyStr}초]</span> 검출된 객체가 없습니다.`;
+                }
+            });
+        }
+    });
+    {% endif %}
 </script>
 {% endblock %}
