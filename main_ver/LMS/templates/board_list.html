@@ -1,0 +1,87 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+        <h1 class="welcome-title" style="font-size: 3.5rem; margin-bottom: 2.5rem;">문의 게시판</h1>
+
+        <div class="main-container"
+             style="max-width: 1200px; flex-direction: column; align-items: stretch; width: 100%; padding: 0 20px;">
+
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0px; width: 100%;">
+
+                {# 검색 기능 임시 주석 처리
+                <div style="display: flex; gap: 10px; width: 450px;">
+                    <input type="text" placeholder="검색어를 입력하세요"
+                           style="flex: 1; height: 45px; padding: 0 20px; border-radius: 50px;
+                          background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+                          color: white; backdrop-filter: blur(5px); font-family: 'Pretendard', sans-serif;">
+
+                    <button class="hero-btn"
+                            style="width: 80px; height: 45px; font-size: 0.95rem; margin: 0; padding: 0; border-radius: 50px;">
+                        검색
+                    </button>
+                </div>
+                #}
+
+                <a href="/board/write" class="hero-btn write-btn"
+                   style="width: 120px; height: 45px; font-size: 1rem; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0;">
+                    글쓰기
+                </a>
+            </div>
+
+            <div class="result-card" style="height: auto; padding: 20px 30px; border-radius: 20px; width: 100%;">
+                <div class="table-responsive">
+                    <table class="table"
+                           style="color: white; border-color: rgba(255,255,255,0.05); margin: 0; table-layout: fixed; width: 100%;">
+                        <thead>
+                        <tr style="border-bottom: 2px solid #00d1b2;">
+                            <th style="width: 8%; text-align: center; color: #00d1b2; padding-bottom: 15px;">번호</th>
+                            <th style="width: 52%; text-align: center; color: #00d1b2; padding-bottom: 15px;">제목</th>
+                            <th style="width: 15%; text-align: center; color: #00d1b2; padding-bottom: 15px;">작성자</th>
+                            <th style="width: 15%; text-align: center; color: #00d1b2; padding-bottom: 15px;">날짜</th>
+                            <th style="width: 10%; text-align: center; color: #00d1b2; padding-bottom: 15px;">조회</th>
+                        </tr>
+                        </thead>
+                        <tbody style="border-top: none;">
+                        {% for board in boards %}
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: 0.3s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+                            onmouseout="this.style.background='transparent'">
+
+                            <td style="text-align: center; vertical-align: middle; padding: 20px 0; color: rgba(255,255,255,0.7);">
+                                {{ board.id }}
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; padding: 20px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                <a href="/board/view/{{ board.id }}" style="color: white; text-decoration: none;">
+                                    {{ board.title }}
+                                </a>
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; padding: 20px 0;">{{
+                                board.writer_name }}
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; padding: 20px 0; color: rgba(255,255,255,0.5);">
+                                {{ board.regdate }}
+                            </td>
+                            <td style="text-align: center; vertical-align: middle; padding: 20px 0; color: rgba(255,255,255,0.5);">
+                                {{ board.readcount }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* 테이블 링크 호버 효과 정의 */
+    tbody tr:hover a {
+        color: #00d1b2 !important;
+    }
+</style>
+{% endblock %}

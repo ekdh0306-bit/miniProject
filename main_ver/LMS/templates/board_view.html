@@ -1,0 +1,105 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+
+        <div class="main-container"
+             style="max-width: 1000px; flex-direction: column; align-items: stretch; width: 100%; padding: 0 20px;">
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: -10px;">
+                <a href="/board/list" class="hero-btn"
+                   style="width: 100px; height: 40px; font-size: 0.9rem;">
+                    <i class="bi bi-arrow-left"></i> 목록
+                </a>
+
+                <div style="display: flex; gap: 10px;">
+                    {% if session['user_id'] == board.member_id %}
+                    <a href="/board/edit/{{ board.id }}" class="hero-btn"
+                       style="width: 80px; height: 40px; font-size: 0.9rem; border-color: #00d1b2; color: #00d1b2;">수정</a>
+                    <button onclick="confirmDelete()" class="hero-btn"
+                            style="width: 80px; height: 40px; font-size: 0.9rem; border-color: #ff4d4d; color: #ff4d4d;">
+                        삭제
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="result-card"
+                 style="height: auto; padding: 40px; border-radius: 20px; width: 100%; text-align: left;">
+
+                <div style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 30px;">
+                    <h2 style="color: white; font-weight: 700; margin-bottom: 15px; font-family: 'Pretendard';">
+                        {{ board.title }}
+                    </h2>
+                    <div style="display: flex; gap: 20px; color: rgba(255,255,255,0.5); font-size: 0.95rem;">
+                        <span>작성자: <strong style="color: #00d1b2;">{{ board.writer_name }}</strong></span>
+                        <span>작성일: {{ board.regdate }}</span>
+                        <span>조회수: {{ board.readcount }}</span>
+                    </div>
+                </div>
+
+                <div style="color: #ddd; line-height: 1.8; font-size: 1.1rem; min-height: 300px; white-space: pre-wrap; font-family: 'Pretendard';">
+{{ board.content }}
+                </div>
+
+                {# 댓글 영역 주석 처리
+                <div class="result-card"
+                     style="height: auto; padding: 30px; border-radius: 20px; width: 100%; margin-top: 30px; text-align: left;">
+                    <h5 style="color: #00d1b2; font-weight: 700; margin-bottom: 25px;">
+                        <i class="bi bi-chat-dots"></i> 댓글 ({{ comments|length }})
+                    </h5>
+
+                    <div style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px;">
+                        {% if comments %}
+                        {% for comment in comments %}
+                        <div style="padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong style="color: white; font-size: 1rem;">{{ comment.writer_name }}</strong>
+                                <span style="color: rgba(255,255,255,0.3); font-size: 0.85rem;">{{ comment.regdate }}</span>
+                            </div>
+                            <p style="color: #bbb; font-size: 0.95rem; margin: 0; line-height: 1.5;">{{ comment.content
+                                }}</p>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p style="color: rgba(255,255,255,0.3); text-align: center; padding: 20px 0;">첫 번째 댓글을
+                            남겨보세요!</p>
+                        {% endif %}
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px;">
+                        <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <textarea placeholder="댓글을 입력해 주세요."
+                      style="flex: 1; height: 80px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+                             border-radius: 10px; color: white; padding: 12px; font-size: 0.95rem; resize: none;"></textarea>
+                            <button class="hero-btn"
+                                    style="width: 100px; height: 80px; margin: 0; background: #00d1b2; color: #000; border: none; font-weight: 700;">
+                                등록
+                            </button>
+                        </div>
+                        <p style="color: rgba(255,255,255,0.4); font-size: 0.8rem; margin-top: 10px; text-align: right;">
+                            타인을 비방하는 댓글은 삭제될 수 있습니다.
+                        </p>
+                    </div>
+                </div>
+                #}
+
+                <div style="margin-top: 50px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; text-align: center;">
+                    <p style="color: rgba(255,255,255,0.3); font-size: 0.8rem;">SafeCar AI Community System</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmDelete() {
+        if (confirm("정말로 이 게시글을 삭제하시겠습니까?")) {
+            location.href = "/board/delete/{{ board.id }}";
+        }
+    }
+</script>
+{% endblock %}
