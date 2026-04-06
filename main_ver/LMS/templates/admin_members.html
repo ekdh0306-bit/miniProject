@@ -1,0 +1,70 @@
+{% extends "menu_layout.html" %}
+
+{% block content %}
+<div class="hero-container" style="min-height: 100vh; height: auto; padding-bottom: 80px;">
+    <div class="hero-overlay"></div>
+
+    <div class="hero-content">
+        <h1 class="welcome-title" style="font-size: 3rem; margin-bottom: 0.5rem;">관리자 - 회원 목록</h1>
+        <p style="color: rgba(255,255,255,0.5); margin-bottom: 2rem;">총 <span style="color:#00d1b2;">{{ members|length }}</span>명의 회원이 있습니다.</p>
+
+        <!-- 관리자 탭 네비게이션 -->
+        <div style="display: flex; gap: 12px; margin-bottom: 30px;">
+            <a href="/admin/members" style="padding: 10px 24px; border-radius: 50px; background: #00d1b2; color: black; font-weight: bold; text-decoration: none; font-size: 0.9rem;">회원 목록</a>
+            <a href="/admin/boards" style="padding: 10px 24px; border-radius: 50px; background: rgba(255,255,255,0.1); color: white; text-decoration: none; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.2);">문의 게시판</a>
+            <a href="/admin/analyze" style="padding: 10px 24px; border-radius: 50px; background: rgba(255,255,255,0.1); color: white; text-decoration: none; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.2);">AI 분석 목록</a>
+        </div>
+
+        <div class="result-card" style="height: auto; padding: 20px 30px; border-radius: 20px; width: 100%; max-width: 1100px;">
+            <div class="table-responsive">
+                <table style="width: 100%; border-collapse: collapse; color: white; table-layout: fixed;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #00d1b2;">
+                            <th style="width: 5%; text-align: center; color: #00d1b2; padding: 12px 0;">ID</th>
+                            <th style="width: 14%; text-align: center; color: #00d1b2; padding: 12px 0;">아이디(uid)</th>
+                            <th style="width: 12%; text-align: center; color: #00d1b2; padding: 12px 0;">이름</th>
+                            <th style="width: 24%; text-align: center; color: #00d1b2; padding: 12px 0;">이메일</th>
+                            <th style="width: 10%; text-align: center; color: #00d1b2; padding: 12px 0;">역할</th>
+                            <th style="width: 8%; text-align: center; color: #00d1b2; padding: 12px 0;">활성</th>
+                            <th style="width: 27%; text-align: center; color: #00d1b2; padding: 12px 0;">한줄소개</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in members %}
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: 0.3s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.04)'"
+                            onmouseout="this.style.background='transparent'">
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.5); font-size: 0.85rem;">{{ m.id }}</td>
+                            <td style="text-align: center; padding: 16px 0; font-weight: bold;">{{ m.uid }}</td>
+                            <td style="text-align: center; padding: 16px 0;">{{ m.name }}</td>
+                            <td style="text-align: center; padding: 16px 0; color: rgba(255,255,255,0.7); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ m.email }}</td>
+                            <td style="text-align: center; padding: 16px 0;">
+                                {% if m.role == 'admin' %}
+                                    <span style="background: rgba(255,80,80,0.2); color: #ff5050; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem;">admin</span>
+                                {% elif m.role == 'manager' %}
+                                    <span style="background: rgba(255,200,0,0.2); color: #ffc800; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem;">manager</span>
+                                {% else %}
+                                    <span style="background: rgba(0,209,178,0.1); color: #00d1b2; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem;">user</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center; padding: 16px 0;">
+                                {% if m.active %}
+                                    <span style="color: #00d1b2;">✔</span>
+                                {% else %}
+                                    <span style="color: rgba(255,255,255,0.3);">✘</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: center; padding: 16px 8px; color: rgba(255,255,255,0.5); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ m.bio or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px 0; color: rgba(255,255,255,0.3);">회원이 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

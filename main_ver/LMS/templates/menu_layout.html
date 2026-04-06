@@ -19,6 +19,9 @@
         {% if session.get('user_name') %}
         <a href="/mypage" class="nav-item">마이페이지</a>
         {% endif %}
+        {% if session.get('user_role') == 'admin' %}
+        <a href="/admin/members" class="nav-item" style="color: #00d1b2;">관리자</a>
+        {% endif %}
         <a href="/analyze" class="nav-item">분석하기</a>
         <a href="/analyze/list" class="nav-item">분석 게시판</a>
         {% if request.path == '/login' %}
