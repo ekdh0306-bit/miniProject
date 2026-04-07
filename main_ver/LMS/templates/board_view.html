@@ -19,6 +19,8 @@
                     {% if session.get('user_id') == board.member_id or session.get('user_role') == 'admin' %}
                     <a href="/board/edit/{{ board.id }}" class="hero-btn"
                        style="width: 80px; height: 40px; font-size: 0.9rem; border-color: #00d1b2; color: #00d1b2;">수정</a>
+                    {% endif %}
+                    {% if session.get('user_id') == board.member_id %}
                     <button onclick="confirmDelete()" class="hero-btn"
                             style="width: 80px; height: 40px; font-size: 0.9rem; border-color: #ff4d4d; color: #ff4d4d;">
                         삭제

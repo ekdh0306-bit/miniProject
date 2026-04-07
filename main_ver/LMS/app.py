@@ -139,7 +139,6 @@ def process_image_yolo(input_path, output_path):
 
     objects = []
     if yolo_model:
-        # 🚀 [최적화 2단계] 이미지 분석 시에도 imgsz=1280 -> 832로 변경하여 처리 속도 대폭 개선
         results = yolo_model(img, verbose=False, conf=0.15, imgsz=832)
         for result in results:
             for box in result.boxes:
@@ -657,15 +656,26 @@ def analysis_detail(media_id):
         with conn.cursor() as cursor:
             # media_files와 analysis_results 테이블을 조인하여 필요한 정보를 가져옵니다.
             # 이 쿼리는 특정 사용자의 특정 미디어 ID에 대한 모든 정보를 안전하게 조회합니다.
-            sql = """
-                SELECT 
-                    m.stored_path, m.file_type, m.memo,
-                    r.status, r.result_json
-                FROM media_files m
-                LEFT JOIN analysis_results r ON m.id = r.media_id
-                WHERE m.id = %s AND m.member_id = %s
-            """
-            cursor.execute(sql, (media_id, session['user_id']))
+            if session.get('user_role') == 'admin':
+                sql = """
+                    SELECT
+                        m.stored_path, m.file_type, m.memo,
+                        r.status, r.result_json
+                    FROM media_files m
+                    LEFT JOIN analysis_results r ON m.id = r.media_id
+                    WHERE m.id = %s
+                """
+                cursor.execute(sql, (media_id,))
+            else:
+                sql = """
+                    SELECT
+                        m.stored_path, m.file_type, m.memo,
+                        r.status, r.result_json
+                    FROM media_files m
+                    LEFT JOIN analysis_results r ON m.id = r.media_id
+                    WHERE m.id = %s AND m.member_id = %s
+                """
+                cursor.execute(sql, (media_id, session['user_id']))
             analysis_data = cursor.fetchone()
 
             if analysis_data and analysis_data.get('result_json'):
@@ -767,9 +777,9 @@ def delete_media_file(media_id):
             # 원본 파일 경로와 AI 분석 결과로 생성된 파생 파일 경로를 모두 조회하기 위해 JOIN 수행
             # 유령 파일(하드디스크에 남는 파일)을 방지하기 위함
             sql_select = """
-                SELECT m.stored_path, r.result_json 
-                FROM media_files m 
-                LEFT JOIN analysis_results r ON m.id = r.media_id 
+                SELECT m.stored_path, r.result_json
+                FROM media_files m
+                LEFT JOIN analysis_results r ON m.id = r.media_id
                 WHERE m.id = %s AND m.member_id = %s
             """
             cursor.execute(sql_select, (media_id, session['user_id']))
@@ -1005,9 +1015,7 @@ def board_delete(board_id):
             cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
             board = cursor.fetchone()
             
-            is_owner = board and board['member_id'] == session['user_id']
-            is_admin = session.get('user_role') == 'admin'
-            if not board or (not is_owner and not is_admin):
+            if not board or board['member_id'] != session['user_id']:
                 return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
                 
             cursor.execute("DELETE FROM boards WHERE id = %s", (board_id,))
