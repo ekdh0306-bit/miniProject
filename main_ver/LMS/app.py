@@ -949,9 +949,11 @@ def board_edit(board_id):
             if not board:
                 return "<script>alert('게시글을 찾을 수 없습니다.'); location.href='/board/list';</script>"
                 
-            if board['member_id'] != session['user_id']:
+            is_owner = board['member_id'] == session['user_id']
+            is_admin = session.get('user_role') == 'admin'
+            if not is_owner and not is_admin:
                 return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
-                
+
             return render_template('board_edit.html', board=board)
     finally:
         conn.close()
@@ -973,9 +975,11 @@ def board_edit_pro():
             cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
             board = cursor.fetchone()
             
-            if not board or board['member_id'] != session['user_id']:
+            is_owner = board and board['member_id'] == session['user_id']
+            is_admin = session.get('user_role') == 'admin'
+            if not board or (not is_owner and not is_admin):
                 return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
-                
+
             sql = "UPDATE boards SET title = %s, content = %s WHERE id = %s"
             cursor.execute(sql, (title, content, board_id))
             conn.commit()
@@ -1001,7 +1005,9 @@ def board_delete(board_id):
             cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
             board = cursor.fetchone()
             
-            if not board or board['member_id'] != session['user_id']:
+            is_owner = board and board['member_id'] == session['user_id']
+            is_admin = session.get('user_role') == 'admin'
+            if not board or (not is_owner and not is_admin):
                 return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
                 
             cursor.execute("DELETE FROM boards WHERE id = %s", (board_id,))
