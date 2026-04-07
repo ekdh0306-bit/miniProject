@@ -16,7 +16,7 @@
                 </a>
 
                 <div style="display: flex; gap: 10px;">
-                    {% if session['user_id'] == board.member_id %}
+                    {% if session.get('user_id') == board.member_id or session.get('user_role') == 'admin' %}
                     <a href="/board/edit/{{ board.id }}" class="hero-btn"
                        style="width: 80px; height: 40px; font-size: 0.9rem; border-color: #00d1b2; color: #00d1b2;">수정</a>
                     <button onclick="confirmDelete()" class="hero-btn"
