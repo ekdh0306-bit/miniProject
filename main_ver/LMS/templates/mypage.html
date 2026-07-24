@@ -37,6 +37,14 @@
                 <label>이메일 주소</label>
                 <input type="text" value="{{ user.email }}" readonly>
             </div>
+            <div class="input-group">
+                <label>권한</label>
+                <input type="text" value="{{ user.role }}" readonly>
+            </div>
+            <div class="input-group">
+                <label>계정 상태</label>
+                <input type="text" value="{{ '활성' if user.active else '비활성' }}" readonly>
+            </div>
 
             <div class="button-group" style="flex-direction: column; gap: 10px; margin-top: auto; padding-top: 30px;">
                 <a href="/member/edit" class="hero-btn" style="width: 100%;">정보 수정하러 가기</a>

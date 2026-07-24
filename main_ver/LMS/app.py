@@ -7,9 +7,16 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, url_for, redirect, session, jsonify, send_from_directory
 
 from common.Session import Session
+from common.SupabaseClient import (
+    SupabaseConfigurationError,
+    create_admin_client,
+    create_public_client,
+)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
@@ -51,6 +58,37 @@ def get_user_info(user_id):
             return row
     finally:
         conn.close()
+
+
+def get_auth_profile(user_id):
+    response = (
+        create_admin_client()
+        .table('profiles')
+        .select('id, uid, name, role, active, bio, profile_image_path, login_email')
+        .eq('id', str(user_id))
+        .limit(1)
+        .execute()
+    )
+    if not response.data:
+        return None
+    profile = response.data[0]
+    profile['profile_image'] = profile.get('profile_image_path')
+    profile['email'] = profile.pop('login_email', None)
+    return profile
+
+
+def normalize_auth_user_id(user_id):
+    try:
+        return str(uuid.UUID(str(user_id)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def ensure_session_secret():
+    if not app.config.get('SECRET_KEY'):
+        raise SupabaseConfigurationError(
+            '서버 환경변수 FLASK_SECRET_KEY 설정이 필요합니다.'
+        )
 
 
 def process_video_yolo(input_path, output_path):
@@ -314,62 +352,80 @@ def join():
     if request.method == 'GET':
         return render_template('join.html')
 
-    # POST
-    uid = request.form.get('uid')
+    uid = (request.form.get('uid') or '').strip()
     password = request.form.get('pw')
-    name = request.form.get('username')
-    email = request.form.get('email')
-    try:
-        # Check for duplicate UID
-        conn = Session.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT * FROM members WHERE uid = %s", (uid,))
-                is_duplicate = cursor.fetchone() is not None
-        finally:
-            conn.close()
+    confirm_password = request.form.get('confirm_password')
+    name = (request.form.get('username') or '').strip()
+    email = (request.form.get('email') or '').strip().lower()
 
-        if is_duplicate:
+    if not uid or not password or not name or not email:
+        return "<script>alert('필수 정보를 모두 입력해주세요.'); history.back();</script>"
+
+    if password != confirm_password:
+        return "<script>alert('비밀번호 확인이 일치하지 않습니다.'); history.back();</script>"
+
+    try:
+        profile_response = (
+            create_admin_client()
+            .table('profiles')
+            .select('id')
+            .eq('uid', uid)
+            .limit(1)
+            .execute()
+        )
+        if profile_response.data:
             return "<script>alert('이미 존재하는 아이디 입니다.'); history.back();</script>"
 
-        # Join member
-        conn = Session.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                sql = "INSERT INTO members (uid, password, name, email) VALUES (%s, %s, %s, %s)"
-                cursor.execute(sql, (uid, password, name, email))
-                conn.commit()
-                # 성공 시
-                return "<script>alert('회원가입이 완료 되었습니다.'); location.href='/login';</script>"
-        except Exception as e:
-            print(f"회원가입 오류: {e}")
-            return "<script>alert('가입 도중 오류가 발생하였습니다.'); history.back();</script>"
-        finally:
-            conn.close()
+        auth_response = create_public_client().auth.sign_up({
+            'email': email,
+            'password': password,
+            'options': {
+                'data': {
+                    'uid': uid,
+                    'name': name,
+                }
+            },
+        })
+        if not auth_response.user:
+            raise RuntimeError('Supabase Auth did not return a user')
 
-    except Exception as e:
-        print(e)
-        return "<script>alert('치명적인 오류가 발생했습니다. 다시 시도해주세요'); history.back();</script>"
+        return (
+            "<script>alert('회원가입이 완료 되었습니다. "
+            "이메일 인증이 필요한 경우 인증 후 로그인해주세요.'); "
+            "location.href='/login';</script>"
+        )
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+        return "<script>alert('인증 서버 설정이 필요합니다.'); history.back();</script>"
+    except Exception as exc:
+        app.logger.warning('Supabase signup failed: %s', type(exc).__name__)
+        return (
+            "<script>alert('이미 가입된 이메일이거나 가입을 처리할 수 없습니다.'); "
+            "history.back();</script>"
+        )
 
 
 @app.route('/check_uid')  # /check_uid URL로 접속하면 이 함수 실행 GET방식으로 요청 받음
 def check_uid():
-    uid = request.args.get('uid')
-
-    conn = Session.get_connection()
-    # Session 클래스에서 만들어둔 MySQL 연결 객체를 가져옴
+    uid = (request.args.get('uid') or '').strip()
+    if not uid:
+        return {"exists": False}
     try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM members WHERE uid=%s",
-                (uid,)
-            )
-            if cursor.fetchone():
-                return {"exists": True}  # 아이디 이미 사용 중(다른 사람이 쓰는중)
-            else:
-                return {"exists": False}  # 사용 가능
-    finally:
-        conn.close()
+        response = (
+            create_admin_client()
+            .table('profiles')
+            .select('id')
+            .eq('uid', uid)
+            .limit(1)
+            .execute()
+        )
+        return {"exists": bool(response.data)}
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+        return {"exists": False, "error": "인증 서버 설정이 필요합니다."}, 503
+    except Exception as exc:
+        app.logger.warning('Supabase UID check failed: %s', type(exc).__name__)
+        return {"exists": False, "error": "아이디 확인을 처리할 수 없습니다."}, 503
 
 
 @app.route("/login", methods=['GET', 'POST'])
@@ -377,31 +433,45 @@ def login():
     if request.method == 'GET':
         return render_template('login.html')
 
-    # POST
-    uid = request.form['uid']
-    upw = request.form['pw']
+    uid = (request.form.get('uid') or '').strip()
+    upw = request.form.get('pw') or ''
     try:
-        conn = Session.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                sql = "SELECT id, name, uid, email, role FROM members WHERE uid = %s AND password = %s"
-                cursor.execute(sql, (uid, upw))
-                user = cursor.fetchone()
-        finally:
-            conn.close()
-
-        if user:
-            session['user_id'] = user['id']
-            session['user_name'] = user['name']
-            session['user_email'] = user['email']
-            session['user_uid'] = user['uid']
-            session['user_role'] = user['role']
-            return "<script>alert('로그인에 성공했습니다'); location.href='/';</script>"
-        else:
+        ensure_session_secret()
+        profile_response = (
+            create_admin_client()
+            .table('profiles')
+            .select('id, uid, name, role, active, login_email')
+            .eq('uid', uid)
+            .limit(1)
+            .execute()
+        )
+        if not profile_response.data:
             return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
-    except Exception as e:
-        print(e)
-        return render_template('login.html', error="치명적 오류 발생, 다시 시도해주세요")
+
+        profile = profile_response.data[0]
+        if not profile.get('active', True):
+            return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+
+        auth_response = create_public_client().auth.sign_in_with_password({
+            'email': profile['login_email'],
+            'password': upw,
+        })
+        if not auth_response.user or str(auth_response.user.id) != str(profile['id']):
+            return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+
+        session.clear()
+        session['user_id'] = str(auth_response.user.id)
+        session['user_name'] = profile['name']
+        session['user_email'] = auth_response.user.email
+        session['user_uid'] = profile['uid']
+        session['user_role'] = profile['role']
+        return "<script>alert('로그인에 성공했습니다'); location.href='/';</script>"
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+        return render_template('login.html', error="인증 서버 설정이 필요합니다.")
+    except Exception as exc:
+        app.logger.warning('Supabase login failed: %s', type(exc).__name__)
+        return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
 
 
 @app.route('/find_id', methods=['GET', 'POST'])
@@ -409,22 +479,30 @@ def find_id():
     if request.method == 'GET':
         return render_template("find_id.html")
 
-    name = request.form.get("name")
-    email = request.form.get("email")
+    name = (request.form.get("name") or "").strip()
+    email = (request.form.get("email") or "").strip().lower()
 
-    conn = Session.get_connection()
+    if not name or not email or len(name) > 50 or len(email) > 254:
+        return jsonify({"success": False, "message": "일치하는 계정이 없습니다."})
+
     try:
-        with conn.cursor() as cursor:
-            sql = "SELECT uid FROM members WHERE name = %s AND email = %s"
-            cursor.execute(sql, (name, email))
-            row = cursor.fetchone()
-
-            if row:
-                return jsonify({"success": True, "uid": row['uid']})
-            else:
-                return jsonify({"success": False, "message": "일치하는 계정이 없습니다."})
-    finally:
-        conn.close()
+        response = (
+            create_admin_client()
+            .table('profiles')
+            .select('uid')
+            .eq('name', name)
+            .eq('login_email', email)
+            .limit(1)
+            .execute()
+        )
+        if response.data:
+            return jsonify({"success": True, "uid": response.data[0]["uid"]})
+        return jsonify({"success": False, "message": "일치하는 계정이 없습니다."})
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+    except Exception as exc:
+        app.logger.warning('Supabase find-ID failed: %s', type(exc).__name__)
+    return jsonify({"success": False, "message": "아이디 찾기를 처리할 수 없습니다."}), 503
 
 
 @app.route('/logout')
@@ -435,83 +513,49 @@ def logout():
 
 @app.route('/member/edit', methods=['GET', 'POST'])
 def member_edit():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = normalize_auth_user_id(session.get('user_id'))
+    if not user_id:
+        session.clear()
+        return redirect(url_for('login'))
+
     try:
-        if 'user_id' not in session:
+        user_info = get_auth_profile(user_id)
+        if not user_info or not user_info.get('active', True):
+            session.clear()
             return redirect(url_for('login'))
 
         if request.method == 'GET':
-            user_info = get_user_info(session['user_id'])
             return render_template('member_edit.html', user=user_info)
 
-        # POST
-        new_uid = request.form.get('new_uid')
-        new_name = request.form.get('new_name')
-        new_email = request.form.get('email')
-        new_pw = request.form.get('pw')
-        new_memo = request.form.get('bio')
+        submitted_name = (request.form.get('new_name') or '').strip()
+        new_name = submitted_name or user_info['name']
+        new_bio = (request.form.get('bio') or '').strip()
 
-        # 기존 정보 보존 로직 추가: 빈 칸일 경우 기존 정보를 유지
-        user_info = get_user_info(session['user_id'])
-        if not new_uid: new_uid = user_info['uid']
-        if not new_name: new_name = user_info['name']
-        if not new_email: new_email = user_info['email']
-        if not new_memo: new_memo = user_info['bio']
+        if not new_name or len(new_name) > 50:
+            return "<script>alert('이름은 1자 이상 50자 이하로 입력해주세요.'); history.back();</script>"
+        if len(new_bio) > 255:
+            return "<script>alert('한 줄 소개는 255자 이하로 입력해주세요.'); history.back();</script>"
 
-        # [수정] 회원정보 수정 시 프로필 이미지와 bio를 함께 처리하도록 로직 병합
-        # 기존 /upload_profile에 있던 파일 저장 로직을 이곳으로 이동했습니다.
-        file = request.files.get('profile')
-        unique_filename = None
-        if file and file.filename != '':
-            filename = secure_filename(file.filename)
-            unique_filename = f"{uuid.uuid4().hex}_{filename}"
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            file.save(filepath)
+        response = (
+            create_admin_client()
+            .table('profiles')
+            .update({'name': new_name, 'bio': new_bio})
+            .eq('id', user_id)
+            .execute()
+        )
+        if not response.data:
+            raise RuntimeError('Profile update returned no row')
 
-        conn = Session.get_connection()
-        try:
-            with conn.cursor() as cursor:
-                if new_pw:
-                    # bio(인삿말) 필드도 데이터베이스에 함께 업데이트되도록 쿼리 수정
-                    sql = "UPDATE members SET uid = %s, name = %s, email = %s, password = %s, bio = %s WHERE id = %s"
-                    cursor.execute(sql, (new_uid, new_name, new_email, new_pw, new_memo, session['user_id']))
-                else:
-                    # [버그수정 및 반영] 기존 코드에서 파라미터 개수가 맞지 않던 부분을 수정하고 bio(new_memo)를 추가
-                    sql = "UPDATE members SET uid = %s, name = %s, email = %s, bio = %s WHERE id = %s"
-                    cursor.execute(sql, (new_uid, new_name, new_email, new_memo, session['user_id']))
-
-                # [요구사항] 프로필 데이터 존재 여부에 따른 INSERT / UPDATE 분기 로직 유지
-                if unique_filename:
-                    check_sql = "SELECT profile_image FROM members WHERE id = %s"
-                    cursor.execute(check_sql, (session['user_id'],))
-                    result = cursor.fetchone()
-
-                    if result:
-                        sql = "UPDATE members SET profile_image = %s WHERE id = %s"
-                        cursor.execute(sql, (unique_filename, session['user_id']))
-                    else:
-                        sql = "INSERT INTO members (id, profile_image) VALUES (%s, %s)"
-                        cursor.execute(sql, (session['user_id'], unique_filename))
-
-                conn.commit()
-                updated = True
-        except Exception as e:
-            print(e)
-            updated = False
-        finally:
-            conn.close()
-
-        if updated:
-            session['user_uid'] = new_uid
-            session['user_email'] = new_email
-            session['user_name'] = new_name
-            return "<script>alert('회원정보 수정을 완료했습니다.'); location.href = '/mypage';</script>"
-        else:
-            return "<script>alert('수정 도중 오류가 발생했습니다.'); history.back();</script>"
-
-    except Exception as e:
-        print(f'치명적 오류 발생{e}')
-        return redirect(url_for('login'))
+        session['user_name'] = new_name
+        return "<script>alert('회원정보 수정을 완료했습니다.'); location.href = '/mypage';</script>"
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+    except Exception as exc:
+        app.logger.warning('Supabase profile update failed: %s', type(exc).__name__)
+    return "<script>alert('수정 도중 오류가 발생했습니다.'); history.back();</script>", 503
 
 
 @app.route('/mypage')
@@ -519,29 +563,19 @@ def mypage():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     user_id = session['user_id']
-    user_info = get_user_info(user_id)
-
-    # 최근 분석 결과 5개를 가져오는 로직 추가
-    conn = Session.get_connection()
-    analysis_results = []
     try:
-        with conn.cursor() as cursor:
-            sql = """
-                SELECT 
-                    m.id, m.memo, m.uploaded_at,
-                    r.status
-                FROM media_files m
-                LEFT JOIN analysis_results r ON m.id = r.media_id
-                WHERE m.member_id = %s
-                ORDER BY m.uploaded_at DESC
-                LIMIT 5
-            """
-            cursor.execute(sql, (user_id,))
-            analysis_results = cursor.fetchall()
-    finally:
-        conn.close()
+        user_info = get_auth_profile(user_id)
+    except Exception as exc:
+        app.logger.warning('Supabase profile lookup failed: %s', type(exc).__name__)
+        session.clear()
+        return redirect(url_for('login'))
 
-    return render_template('mypage.html', user=user_info, analysis_results=analysis_results)
+    if not user_info or not user_info.get('active', True):
+        session.clear()
+        return redirect(url_for('login'))
+
+    # Analysis records remain on MySQL until the dedicated migration phase.
+    return render_template('mypage.html', user=user_info, analysis_results=[])
 
 
 @app.route('/member/delete/<int:user_id>', methods=['GET'])
@@ -1133,4 +1167,3 @@ def uploaded_file(filename):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-

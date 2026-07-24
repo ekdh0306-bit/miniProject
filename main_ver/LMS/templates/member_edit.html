@@ -16,20 +16,19 @@
                      style="margin-bottom: 35px; gap: 30px; display: flex; align-items: center;">
 
                     <div class="profile-circle"
-                         onclick="document.getElementById('file-input').click();"
-                         style="cursor: pointer; width: 120px; height: 120px; border-radius: 50%; border: 2px dashed #00d1b2; position: relative; overflow: hidden;">
+                         style="cursor: default; width: 120px; height: 120px; border-radius: 50%; border: 2px dashed #00d1b2; position: relative; overflow: hidden;">
 
                         <img id="preview" src="{{ url_for('uploaded_file', filename=user.profile_image) if user.profile_image else '#' }}" alt="미리보기"
                              style="width: 100%; height: 100%; object-fit: cover; {{ 'display:none;' if not user.profile_image }}">
 
                         <span id="upload-icon"
                               style="font-size: 13px; color: #00d1b2; text-align: center; {{ 'display:none;' if user.profile_image }}">
-                클릭하여<br>이미지 추가
+                이미지 변경은<br>추후 지원
             </span>
                     </div>
 
                     <input type="file" id="file-input" name="profile" accept="image/*" onchange="previewImage(this);"
-                           style="display: none;">
+                           style="display: none;" disabled>
 
                     <div class="input-group" style="flex: 1; margin: 0; border: none;">
                         <label>한 줄 소개</label>
@@ -42,16 +41,16 @@
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         <div class="input-group" style="margin: 0;">
                             <label>새 아이디</label>
-                            <input type="text" name="new_uid" placeholder="변경할 아이디 (기존: {{ user.uid }})">
+                            <input type="text" name="new_uid" value="{{ user.uid }}" readonly disabled>
                         </div>
                         <div class="input-group" style="margin: 0;">
                             <label>새 비밀번호</label>
-                            <input type="password" name="pw" placeholder="변경할 비밀번호">
+                            <input type="password" name="pw" placeholder="추후 지원" disabled>
                         </div>
 
                         <div class="input-group" style="margin: 0;">
                             <label>비밀번호 확인</label>
-                            <input type="password" id="pw_confirm" placeholder="한 번 더 입력">
+                            <input type="password" id="pw_confirm" placeholder="추후 지원" disabled>
                         </div>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -61,7 +60,7 @@
                         </div>
                         <div class="input-group" style="margin: 0;">
                             <label>이메일</label>
-                            <input type="email" name="email" placeholder="변경할 이메일 주소">
+                            <input type="email" name="email" value="{{ user.email }}" readonly disabled>
                         </div>
 
                     </div>
