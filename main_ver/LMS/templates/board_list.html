@@ -7,6 +7,13 @@
     <div class="hero-content">
         <h1 class="welcome-title" style="font-size: 3.5rem; margin-bottom: 2.5rem;">문의 게시판</h1>
 
+        {% if board_error %}
+        <div role="alert"
+            style="max-width: 900px; margin: 0 auto 24px; padding: 14px 18px; border-radius: 12px; border: 1px solid rgba(255, 193, 7, 0.45); background: rgba(255, 193, 7, 0.12); color: #ffe08a; text-align: center;">
+            {{ board_error }}
+        </div>
+        {% endif %}
+
         <div class="main-container"
              style="max-width: 1200px; flex-direction: column; align-items: stretch; width: 100%; padding: 0 20px;">
 
