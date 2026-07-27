@@ -3,6 +3,7 @@ import json
 import uuid
 import secrets
 import time
+import tempfile
 import cv2  # 비디오 처리를 위한 OpenCV 임포트. 프레임 단위 처리 및 바운딩 박스 그리기에 사용됨.
 from ultralytics import YOLO  # YOLOv8 모델 임포트. 객체 탐지에 사용됨.
 from werkzeug.utils import secure_filename
@@ -67,7 +68,11 @@ def use_canonical_localhost():
 
 # YOLOv8 모델 초기화 (커스텀 학습된 모델 로드)
 # 아키텍처(CPU) 서버 환경 구동을 위해 변환된 ONNX 경량화 모델을 사용하며, 파일이 없으면 자동 변환합니다.
-onnx_path = 'best (2).onnx'
+onnx_path = (
+    'best (2).onnx'
+    if os.path.exists('best (2).onnx') or os.path.exists('best (2).pt')
+    else 'yolo11n.pt'
+)
 pt_path = 'best (2).pt'
 
 if not os.path.exists(onnx_path) and os.path.exists(pt_path):
@@ -350,6 +355,83 @@ def execute_ai_analysis(media_id):
         conn.close()
 
 
+def execute_supabase_ai_analysis(
+    admin,
+    media_id,
+    owner_id,
+    original_name,
+    file_type,
+    file_bytes,
+):
+    if yolo_model is None:
+        admin.table('analysis_results').update({
+            'status': 'UNAVAILABLE',
+            'result_json': {
+                'message': '현재 로컬 환경에서 AI 분석 기능을 사용할 수 없습니다.'
+            },
+        }).eq('media_id', media_id).execute()
+        return
+
+    extension = os.path.splitext(original_name)[1] or (
+        '.jpg' if file_type == 'IMAGE' else '.mp4'
+    )
+    processed_extension = extension if file_type == 'IMAGE' else '.webm'
+    processed_storage_path = (
+        f"{owner_id}/processed/{uuid.uuid4().hex}{processed_extension}"
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix='safecar-analysis-') as temp_dir:
+            input_path = os.path.join(temp_dir, f'input{extension}')
+            output_path = os.path.join(
+                temp_dir,
+                f'processed{processed_extension}',
+            )
+            with open(input_path, 'wb') as input_file:
+                input_file.write(file_bytes)
+
+            if file_type == 'IMAGE':
+                objects = process_image_yolo(input_path, output_path)
+                result_json = {
+                    'objects': objects,
+                    'processed_storage_path': processed_storage_path,
+                }
+                content_type = 'image/jpeg'
+                if processed_extension.lower() == '.png':
+                    content_type = 'image/png'
+            else:
+                frame_tags = process_video_yolo(input_path, output_path)
+                result_json = {
+                    'frame_tags': frame_tags,
+                    'processed_storage_path': processed_storage_path,
+                }
+                content_type = 'video/webm'
+
+            with open(output_path, 'rb') as processed_file:
+                admin.storage.from_('analysis-media').upload(
+                    processed_storage_path,
+                    processed_file,
+                    {
+                        'content-type': content_type,
+                        'upsert': 'false',
+                    },
+                )
+        admin.table('analysis_results').update({
+            'status': 'SUCCESS',
+            'result_json': result_json,
+        }).eq('media_id', media_id).execute()
+    except Exception as exc:
+        app.logger.warning(
+            'YOLO analysis failed: type=%s',
+            type(exc).__name__,
+        )
+        admin.table('analysis_results').update({
+            'status': 'FAIL',
+            'result_json': {
+                'message': 'AI 분석 처리 중 오류가 발생했습니다.'
+            },
+        }).eq('media_id', media_id).execute()
+
+
 def upload_analysis_to_supabase(file, user_id, config, memo=None):
     owner_id = normalize_auth_user_id(user_id)
     if not owner_id:
@@ -374,10 +456,11 @@ def upload_analysis_to_supabase(file, user_id, config, memo=None):
     admin = create_admin_client()
     storage = admin.storage.from_('analysis-media')
     uploaded = False
+    file_bytes = file.read()
     try:
         storage.upload(
             storage_path,
-            file.read(),
+            file_bytes,
             {
                 'content-type': file.mimetype or 'application/octet-stream',
                 'upsert': 'false',
@@ -395,17 +478,19 @@ def upload_analysis_to_supabase(file, user_id, config, memo=None):
             raise RuntimeError('media_files insert returned no row')
         media_id = media_response.data[0]['id']
 
-        status = 'PENDING' if yolo_model is not None else 'UNAVAILABLE'
-        result_json = None
-        if status == 'UNAVAILABLE':
-            result_json = {
-                'message': '현재 로컬 환경에서 AI 분석 기능을 사용할 수 없습니다.'
-            }
         admin.table('analysis_results').insert({
             'media_id': media_id,
-            'status': status,
-            'result_json': result_json,
+            'status': 'PENDING',
+            'result_json': None,
         }).execute()
+        execute_supabase_ai_analysis(
+            admin,
+            media_id,
+            owner_id,
+            filename,
+            file_type,
+            file_bytes,
+        )
         return media_id
     except Exception:
         if uploaded:
@@ -1086,15 +1171,19 @@ def render_supabase_analysis_detail(media_id):
         analysis_data.update(
             result_response.data[0] if result_response.data else {}
         )
+        result_json = analysis_data.get('result_json') or {}
+        display_storage_path = (
+            result_json.get('processed_storage_path')
+            or analysis_data['storage_path']
+        )
         signed = admin.storage.from_('analysis-media').create_signed_url(
-            analysis_data['storage_path'], 3600
+            display_storage_path, 3600
         )
         analysis_data['media_url'] = (
             signed.get('signedURL')
             or signed.get('signedUrl')
             or signed.get('signed_url')
         )
-        result_json = analysis_data.get('result_json') or {}
         if analysis_data.get('status') == 'UNAVAILABLE':
             analysis_data['formatted_result'] = result_json.get(
                 'message',
@@ -1259,7 +1348,18 @@ def delete_supabase_analysis(media_id):
         if not response.data:
             return "<script>alert('삭제 권한이 없거나 기록이 존재하지 않습니다.'); history.back();</script>", 404
         storage_path = response.data[0]['storage_path']
-        admin.storage.from_('analysis-media').remove([storage_path])
+        result_response = admin.table('analysis_results').select(
+            'result_json'
+        ).eq('media_id', normalized_media_id).limit(1).execute()
+        result_json = (
+            result_response.data[0].get('result_json') or {}
+            if result_response.data else {}
+        )
+        storage_paths = [storage_path]
+        processed_storage_path = result_json.get('processed_storage_path')
+        if processed_storage_path:
+            storage_paths.append(processed_storage_path)
+        admin.storage.from_('analysis-media').remove(storage_paths)
         admin.table('media_files').delete().eq(
             'id', normalized_media_id
         ).eq('owner_id', user_id).execute()
