@@ -1,10 +1,14 @@
 import os
 import json
 import uuid
+import secrets
+import time
 import cv2  # 비디오 처리를 위한 OpenCV 임포트. 프레임 단위 처리 및 바운딩 박스 그리기에 사용됨.
 from ultralytics import YOLO  # YOLOv8 모델 임포트. 객체 탐지에 사용됨.
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, url_for, redirect, session, jsonify, send_from_directory
+from dotenv import load_dotenv
+from supabase_auth.errors import AuthApiError
 
 from common.Session import Session
 from common.SupabaseClient import (
@@ -13,14 +17,53 @@ from common.SupabaseClient import (
     create_public_client,
 )
 
+load_dotenv(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env.local'),
+    override=True,
+)
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
+configured_flask_secret = os.environ.get('FLASK_SECRET_KEY')
+if not configured_flask_secret:
+    os.makedirs(app.instance_path, exist_ok=True)
+    local_secret_path = os.path.join(app.instance_path, 'flask-secret')
+    try:
+        with open(local_secret_path, 'x', encoding='utf-8') as secret_file:
+            secret_file.write(secrets.token_hex(32))
+    except FileExistsError:
+        pass
+    with open(local_secret_path, encoding='utf-8') as secret_file:
+        configured_flask_secret = secret_file.read().strip()
+    app.logger.warning(
+        'FLASK_SECRET_KEY is not configured; using the persistent local '
+        'development key from the ignored instance directory.'
+    )
+app.config['SECRET_KEY'] = configured_flask_secret
+app.config['SESSION_COOKIE_NAME'] = 'safecar_session'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 app.config['MAX_IMAGE_SIZE'] = 20 * 1024 * 1024
 app.config['MAX_VIDEO_SIZE'] = 500 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
+
+
+@app.before_request
+def use_canonical_localhost():
+    """Keep local session cookies on one host during development."""
+    host_name, separator, port = request.host.partition(':')
+    if host_name.lower() != 'localhost':
+        return None
+
+    canonical_host = '127.0.0.1'
+    if separator and port:
+        canonical_host = f'{canonical_host}:{port}'
+    path = request.full_path
+    if path.endswith('?'):
+        path = path[:-1]
+    return redirect(f'{request.scheme}://{canonical_host}{path}', code=302)
+
 
 # YOLOv8 모델 초기화 (커스텀 학습된 모델 로드)
 # 아키텍처(CPU) 서버 환경 구동을 위해 변환된 ONNX 경량화 모델을 사용하며, 파일이 없으면 자동 변환합니다.
@@ -89,6 +132,37 @@ def ensure_session_secret():
         raise SupabaseConfigurationError(
             '서버 환경변수 FLASK_SECRET_KEY 설정이 필요합니다.'
         )
+
+
+def is_auth_email_rate_limit(error):
+    status = getattr(error, 'status', None)
+    code = str(getattr(error, 'code', '') or '')
+    message = str(getattr(error, 'message', '') or '').lower()
+    return (
+        str(status) == '429'
+        or 'rate_limit' in code
+        or 'rate' in code
+        or 'rate limit' in message
+    )
+
+
+def can_use_local_signup_fallback():
+    return request.remote_addr in {'127.0.0.1', '::1'}
+
+
+def create_local_confirmed_auth_user(email, password, uid, name):
+    response = create_admin_client().auth.admin.create_user({
+        'email': email,
+        'password': password,
+        'email_confirm': True,
+        'user_metadata': {
+            'uid': uid,
+            'name': name,
+        },
+    })
+    if not response.user:
+        raise RuntimeError('Supabase Admin API did not return a user')
+    return response.user
 
 
 def process_video_yolo(input_path, output_path):
@@ -276,7 +350,79 @@ def execute_ai_analysis(media_id):
         conn.close()
 
 
+def upload_analysis_to_supabase(file, user_id, config, memo=None):
+    owner_id = normalize_auth_user_id(user_id)
+    if not owner_id:
+        raise ValueError("로그인 정보가 올바르지 않습니다. 다시 로그인해 주세요.")
+
+    filename = secure_filename(file.filename)
+    if not filename:
+        raise ValueError("올바른 파일을 선택해 주세요.")
+    unique_filename = f"{uuid.uuid4().hex}_{filename}"
+    extension = filename.rsplit('.', 1)[-1].lower()
+    is_image = extension in ['jpg', 'jpeg', 'png', 'gif']
+    file_type = 'IMAGE' if is_image else 'VIDEO'
+    limit = config.get('MAX_IMAGE_SIZE') if is_image else config.get('MAX_VIDEO_SIZE')
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > limit:
+        limit_mb = limit // (1024 * 1024)
+        raise ValueError(f"{file_type} 파일은 {limit_mb}MB를 초과할 수 없습니다.")
+
+    storage_path = f"{owner_id}/{unique_filename}"
+    admin = create_admin_client()
+    storage = admin.storage.from_('analysis-media')
+    uploaded = False
+    try:
+        storage.upload(
+            storage_path,
+            file.read(),
+            {
+                'content-type': file.mimetype or 'application/octet-stream',
+                'upsert': 'false',
+            },
+        )
+        uploaded = True
+        media_response = admin.table('media_files').insert({
+            'owner_id': owner_id,
+            'original_name': filename,
+            'storage_path': storage_path,
+            'file_type': file_type,
+            'memo': (memo or '').strip() or None,
+        }).execute()
+        if not media_response.data:
+            raise RuntimeError('media_files insert returned no row')
+        media_id = media_response.data[0]['id']
+
+        status = 'PENDING' if yolo_model is not None else 'UNAVAILABLE'
+        result_json = None
+        if status == 'UNAVAILABLE':
+            result_json = {
+                'message': '현재 로컬 환경에서 AI 분석 기능을 사용할 수 없습니다.'
+            }
+        admin.table('analysis_results').insert({
+            'media_id': media_id,
+            'status': status,
+            'result_json': result_json,
+        }).execute()
+        return media_id
+    except Exception:
+        if uploaded:
+            try:
+                storage.remove([storage_path])
+            except Exception as cleanup_error:
+                app.logger.warning(
+                    'Analysis upload cleanup failed: type=%s',
+                    type(cleanup_error).__name__,
+                )
+        raise
+
+
 def mediafile_uploads(file, user_id, upload_folder, config, memo=None):
+    return upload_analysis_to_supabase(file, user_id, config, memo)
+
+    # Legacy MySQL/local-file implementation retained below for reference only.
     filename = secure_filename(file.filename)
     unique_filename = f"{uuid.uuid4().hex}_{filename}"
     ext = filename.split('.')[-1].lower()
@@ -397,10 +543,63 @@ def join():
     except SupabaseConfigurationError:
         app.logger.error('Supabase authentication environment is not configured.')
         return "<script>alert('인증 서버 설정이 필요합니다.'); history.back();</script>"
+    except AuthApiError as exc:
+        status = getattr(exc, 'status', None)
+        code = str(getattr(exc, 'code', '') or '')
+        internal_message = str(getattr(exc, 'message', '') or '').lower()
+        app.logger.warning(
+            'Supabase signup rejected: status=%s code=%s',
+            status,
+            code,
+        )
+
+        if is_auth_email_rate_limit(exc) and can_use_local_signup_fallback():
+            try:
+                create_local_confirmed_auth_user(
+                    email,
+                    password,
+                    uid,
+                    name,
+                )
+                app.logger.info(
+                    'Local signup completed through the rate-limit fallback.'
+                )
+                return (
+                    "<script>alert('회원가입이 완료 되었습니다.'); "
+                    "location.href='/login';</script>"
+                )
+            except Exception as fallback_error:
+                app.logger.warning(
+                    'Local signup fallback failed: %s',
+                    type(fallback_error).__name__,
+                )
+                return (
+                    "<script>alert('로컬 회원가입을 처리할 수 없습니다.'); "
+                    "history.back();</script>"
+                )
+
+        if is_auth_email_rate_limit(exc):
+            message = '가입 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'
+        elif (
+            code in {'email_exists', 'user_already_exists'}
+            or 'already registered' in internal_message
+            or 'already exists' in internal_message
+        ):
+            message = '이미 가입된 이메일입니다.'
+        elif 'weak_password' in code or 'password' in internal_message:
+            message = '비밀번호 보안 기준을 충족하지 않습니다.'
+        elif 'signup_disabled' in code:
+            message = '현재 신규 회원가입이 비활성화되어 있습니다.'
+        elif 'database' in code or 'database' in internal_message:
+            message = '회원정보 생성 설정을 확인해야 합니다.'
+        else:
+            message = '회원가입을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.'
+
+        return f"<script>alert('{message}'); history.back();</script>"
     except Exception as exc:
         app.logger.warning('Supabase signup failed: %s', type(exc).__name__)
         return (
-            "<script>alert('이미 가입된 이메일이거나 가입을 처리할 수 없습니다.'); "
+            "<script>alert('회원가입을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.'); "
             "history.back();</script>"
         )
 
@@ -409,7 +608,7 @@ def join():
 def check_uid():
     uid = (request.args.get('uid') or '').strip()
     if not uid:
-        return {"exists": False}
+        return {"error": "아이디를 입력해 주세요."}, 400
     try:
         response = (
             create_admin_client()
@@ -422,10 +621,10 @@ def check_uid():
         return {"exists": bool(response.data)}
     except SupabaseConfigurationError:
         app.logger.error('Supabase authentication environment is not configured.')
-        return {"exists": False, "error": "인증 서버 설정이 필요합니다."}, 503
+        return {"error": "인증 서버 설정이 필요합니다."}, 503
     except Exception as exc:
         app.logger.warning('Supabase UID check failed: %s', type(exc).__name__)
-        return {"exists": False, "error": "아이디 확인을 처리할 수 없습니다."}, 503
+        return {"error": "아이디 확인을 처리할 수 없습니다."}, 503
 
 
 @app.route("/login", methods=['GET', 'POST'])
@@ -437,27 +636,76 @@ def login():
     upw = request.form.get('pw') or ''
     try:
         ensure_session_secret()
+        admin_client = create_admin_client()
         profile_response = (
-            create_admin_client()
+            admin_client
             .table('profiles')
             .select('id, uid, name, role, active, login_email')
             .eq('uid', uid)
             .limit(1)
             .execute()
         )
-        if not profile_response.data:
-            return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+        profile = profile_response.data[0] if profile_response.data else None
+        recovered_profile = False
+        if not profile:
+            auth_users = admin_client.auth.admin.list_users(
+                page=1,
+                per_page=1000,
+            )
+            matching_user = next(
+                (
+                    auth_user
+                    for auth_user in auth_users
+                    if str((auth_user.user_metadata or {}).get('uid', '')).strip()
+                    == uid
+                ),
+                None,
+            )
+            if matching_user and matching_user.email:
+                metadata = matching_user.user_metadata or {}
+                profile = {
+                    'id': str(matching_user.id),
+                    'uid': uid,
+                    'name': str(metadata.get('name') or uid)[:50],
+                    'role': 'user',
+                    'active': True,
+                    'login_email': matching_user.email,
+                }
+                recovered_profile = True
 
-        profile = profile_response.data[0]
+        if not profile:
+            return (
+                "<script>alert('로그인 계정 정보를 찾지 못했습니다. "
+                "회원가입한 아이디를 확인해 주세요. [LOGIN-01]'); "
+                "history.back();</script>"
+            )
+
         if not profile.get('active', True):
-            return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+            return (
+                "<script>alert('현재 비활성화된 계정입니다. [LOGIN-02]'); "
+                "history.back();</script>"
+            )
+
+        auth_user_lookup = admin_client.auth.admin.get_user_by_id(
+            str(profile['id'])
+        )
+        auth_user = getattr(auth_user_lookup, 'user', None)
+        if not auth_user or not auth_user.email:
+            return (
+                "<script>alert('인증 계정 정보를 찾지 못했습니다. "
+                "[LOGIN-10]'); history.back();</script>"
+            )
+        profile['login_email'] = auth_user.email
 
         auth_response = create_public_client().auth.sign_in_with_password({
             'email': profile['login_email'],
             'password': upw,
         })
         if not auth_response.user or str(auth_response.user.id) != str(profile['id']):
-            return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+            return (
+                "<script>alert('아이디 또는 비밀번호가 일치하지 않습니다. "
+                "[LOGIN-03]'); history.back();</script>"
+            )
 
         session.clear()
         session['user_id'] = str(auth_response.user.id)
@@ -465,13 +713,63 @@ def login():
         session['user_email'] = auth_response.user.email
         session['user_uid'] = profile['uid']
         session['user_role'] = profile['role']
-        return "<script>alert('로그인에 성공했습니다'); location.href='/';</script>"
+        session.modified = True
+
+        if recovered_profile:
+            try:
+                admin_client.table('profiles').upsert(
+                    profile,
+                    on_conflict='id',
+                ).execute()
+            except Exception as profile_error:
+                app.logger.warning(
+                    'Authenticated user profile recovery failed: type=%s code=%s',
+                    type(profile_error).__name__,
+                    str(getattr(profile_error, 'code', '') or 'none'),
+                )
+
+        return redirect(url_for('index'))
     except SupabaseConfigurationError:
         app.logger.error('Supabase authentication environment is not configured.')
-        return render_template('login.html', error="인증 서버 설정이 필요합니다.")
+        return render_template(
+            'login.html',
+            error="인증 서버 설정이 필요합니다. [LOGIN-04]",
+        )
+    except AuthApiError as exc:
+        code = str(getattr(exc, 'code', '') or '')
+        status = str(getattr(exc, 'status', '') or '')
+        internal_message = str(getattr(exc, 'message', '') or '').lower()
+        app.logger.warning(
+            'Supabase login rejected: status=%s code=%s',
+            status or 'none',
+            code or 'none',
+        )
+        if (
+            code == 'email_not_confirmed'
+            or 'email not confirmed' in internal_message
+        ):
+            message = '이메일 인증이 완료되지 않았습니다. [LOGIN-05]'
+        elif (
+            code in {'invalid_credentials', 'user_not_found'}
+            or 'invalid login credentials' in internal_message
+            or 'invalid credentials' in internal_message
+        ):
+            message = '아이디 또는 비밀번호가 일치하지 않습니다. [LOGIN-06]'
+        elif is_auth_email_rate_limit(exc):
+            message = '로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요. [LOGIN-07]'
+        else:
+            message = '인증 서버가 로그인을 거부했습니다. [LOGIN-08]'
+        return f"<script>alert('{message}'); history.back();</script>"
     except Exception as exc:
-        app.logger.warning('Supabase login failed: %s', type(exc).__name__)
-        return "<script>alert('아이디 또는 비밀번호가 잘못되었습니다.'); history.back();</script>"
+        app.logger.warning(
+            'Supabase login failed: type=%s code=%s',
+            type(exc).__name__,
+            str(getattr(exc, 'code', '') or 'none'),
+        )
+        return (
+            "<script>alert('로그인 처리 중 서버 오류가 발생했습니다. "
+            "[LOGIN-09]'); history.back();</script>"
+        )
 
 
 @app.route('/find_id', methods=['GET', 'POST'])
@@ -508,7 +806,7 @@ def find_id():
 @app.route('/logout')
 def logout():
     session.clear()
-    return "<script>alert('로그아웃을 성공했습니다!'); location.href='/';</script>"
+    return redirect(url_for('index'))
 
 
 @app.route('/member/edit', methods=['GET', 'POST'])
@@ -578,29 +876,113 @@ def mypage():
     return render_template('mypage.html', user=user_info, analysis_results=[])
 
 
-@app.route('/member/delete/<int:user_id>', methods=['GET'])
-def member_delete_route(user_id):
-    if 'user_id' not in session or session['user_id'] != user_id:
+def render_member_delete(error=None, status=200):
+    csrf_token = secrets.token_urlsafe(32)
+    session['member_delete_csrf'] = csrf_token
+    return render_template(
+        'member_delete.html',
+        csrf_token=csrf_token,
+        error=error,
+    ), status
+
+
+@app.route('/member/delete', methods=['GET', 'POST'])
+def member_delete_route():
+    if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    deleted = False
-    conn = Session.get_connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM members WHERE id = %s", (session['user_id'],))
-            conn.commit()
-            deleted = True
-    except Exception as e:
-        print(f"회원 탈퇴 중 오류: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
-
-    if deleted:
+    user_id = normalize_auth_user_id(session.get('user_id'))
+    if not user_id:
         session.clear()
-        return "<script>alert('회원탈퇴를 완료했습니다!.'); location.href='/'</script>"
+        return redirect(url_for('login'))
+
+    if request.method == 'GET':
+        return render_member_delete()
+
+    submitted_csrf = request.form.get('csrf_token') or ''
+    expected_csrf = session.pop('member_delete_csrf', '')
+    if (
+        not submitted_csrf
+        or not expected_csrf
+        or not secrets.compare_digest(submitted_csrf, expected_csrf)
+    ):
+        return render_member_delete(
+            '요청을 확인할 수 없습니다. 다시 시도해 주세요.',
+            400,
+        )
+
+    password = request.form.get('password') or ''
+    confirmed = request.form.get('confirm_delete') == 'on'
+    if not password:
+        return render_member_delete('현재 비밀번호를 입력해 주세요.', 400)
+    if not confirmed:
+        return render_member_delete('탈퇴 안내 확인이 필요합니다.', 400)
+
+    try:
+        profile = get_auth_profile(user_id)
+        if not profile or not profile.get('active', True) or not profile.get('email'):
+            return render_member_delete('회원탈퇴를 처리할 수 없습니다.', 400)
+
+        auth_response = create_public_client().auth.sign_in_with_password({
+            'email': profile['email'],
+            'password': password,
+        })
+        if (
+            not auth_response.user
+            or str(auth_response.user.id) != user_id
+        ):
+            return render_member_delete('현재 비밀번호를 확인해 주세요.', 400)
+
+        admin_client = create_admin_client()
+        admin_client.auth.admin.delete_user(user_id)
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase authentication environment is not configured.')
+    except Exception as exc:
+        app.logger.warning('Supabase account deletion failed: %s', type(exc).__name__)
     else:
-        return "탈퇴 처리 중 오류 발생"
+        # Auth deletion is the account-deletion commit point. Never retain or
+        # recreate the authenticated Flask session after this point.
+        session.clear()
+
+        cascade_confirmed = False
+        cascade_checked = False
+        try:
+            for attempt in range(2):
+                remaining = (
+                    admin_client
+                    .table('profiles')
+                    .select('id')
+                    .eq('id', user_id)
+                    .limit(1)
+                    .execute()
+                )
+                cascade_checked = True
+                if not remaining.data:
+                    cascade_confirmed = True
+                    break
+                if attempt == 0:
+                    time.sleep(0.15)
+        except Exception as exc:
+            app.logger.warning(
+                'Supabase profile cascade verification unavailable: %s',
+                type(exc).__name__,
+            )
+
+        if cascade_checked and not cascade_confirmed:
+            app.logger.warning(
+                'Supabase profile row remained after Auth user deletion.'
+            )
+
+        return "<script>alert('회원탈퇴가 완료되었습니다.'); location.href='/';</script>"
+
+    return render_member_delete('현재 비밀번호를 확인해 주세요.', 400)
+
+
+@app.route('/member/delete/<user_id>', methods=['GET'])
+def legacy_member_delete_route(user_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return redirect(url_for('member_delete_route'))
 
 
 @app.route('/analyze', methods=['GET', 'POST'])
@@ -679,10 +1061,70 @@ def get_analysis_status(media_id):
 
 # [기존 폴링용 상태 확인 API 주석 처리 끝]
 
-@app.route('/analyze/analysis/<int:media_id>')
+def render_supabase_analysis_detail(media_id):
+    user_id = normalize_auth_user_id(session.get('user_id'))
+    normalized_media_id = normalize_auth_user_id(media_id)
+    if not user_id:
+        session.clear()
+        return redirect(url_for('login'))
+    if not normalized_media_id:
+        return "분석 데이터를 찾을 수 없습니다.", 404
+    try:
+        admin = create_admin_client()
+        query = admin.table('media_files').select(
+            'id, owner_id, storage_path, file_type, memo, uploaded_at'
+        ).eq('id', normalized_media_id)
+        if session.get('user_role') != 'admin':
+            query = query.eq('owner_id', user_id)
+        media_response = query.limit(1).execute()
+        if not media_response.data:
+            return "분석 데이터를 찾을 수 없거나 접근 권한이 없습니다.", 404
+        analysis_data = media_response.data[0]
+        result_response = admin.table('analysis_results').select(
+            'status, result_json'
+        ).eq('media_id', normalized_media_id).limit(1).execute()
+        analysis_data.update(
+            result_response.data[0] if result_response.data else {}
+        )
+        signed = admin.storage.from_('analysis-media').create_signed_url(
+            analysis_data['storage_path'], 3600
+        )
+        analysis_data['media_url'] = (
+            signed.get('signedURL')
+            or signed.get('signedUrl')
+            or signed.get('signed_url')
+        )
+        result_json = analysis_data.get('result_json') or {}
+        if analysis_data.get('status') == 'UNAVAILABLE':
+            analysis_data['formatted_result'] = result_json.get(
+                'message',
+                '현재 로컬 환경에서 AI 분석 기능을 사용할 수 없습니다.',
+            )
+        else:
+            objects = result_json.get('objects', [])
+            analysis_data['formatted_result'] = (
+                '\n'.join(
+                    f"[{index}] {item.get('label', '객체')} "
+                    f"(신뢰도: {float(item.get('score', 0)) * 100:.1f}%)"
+                    for index, item in enumerate(objects, 1)
+                )
+                if objects else '분석 결과가 없거나 처리 중입니다.'
+            )
+        return render_template('analyze_analysis.html', analysis_data=analysis_data)
+    except Exception as exc:
+        app.logger.warning(
+            'Supabase analysis detail failed: type=%s code=%s',
+            type(exc).__name__,
+            str(getattr(exc, 'code', '') or 'none'),
+        )
+        return "분석 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", 503
+
+
+@app.route('/analyze/analysis/<media_id>')
 def analysis_detail(media_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    return render_supabase_analysis_detail(media_id)
 
     conn = Session.get_connection()
     analysis_data = None
@@ -799,8 +1241,42 @@ def file_update(media_id):
 """
 
 
-@app.route('/media/delete/<int:media_id>', methods=['POST'])
+def delete_supabase_analysis(media_id):
+    user_id = normalize_auth_user_id(session.get('user_id'))
+    normalized_media_id = normalize_auth_user_id(media_id)
+    if not user_id:
+        session.clear()
+        return redirect(url_for('login'))
+    if not normalized_media_id:
+        return "<script>alert('삭제할 분석 기록을 찾을 수 없습니다.'); history.back();</script>", 404
+    try:
+        admin = create_admin_client()
+        response = admin.table('media_files').select(
+            'id, storage_path'
+        ).eq('id', normalized_media_id).eq(
+            'owner_id', user_id
+        ).limit(1).execute()
+        if not response.data:
+            return "<script>alert('삭제 권한이 없거나 기록이 존재하지 않습니다.'); history.back();</script>", 404
+        storage_path = response.data[0]['storage_path']
+        admin.storage.from_('analysis-media').remove([storage_path])
+        admin.table('media_files').delete().eq(
+            'id', normalized_media_id
+        ).eq('owner_id', user_id).execute()
+        return "<script>alert('분석 기록과 업로드 파일을 삭제했습니다.'); location.href='/analyze/list';</script>"
+    except Exception as exc:
+        app.logger.warning(
+            'Supabase analysis delete failed: type=%s code=%s',
+            type(exc).__name__,
+            str(getattr(exc, 'code', '') or 'none'),
+        )
+        return "<script>alert('분석 기록을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.'); history.back();</script>", 503
+
+
+@app.route('/media/delete/<media_id>', methods=['POST'])
 def delete_media_file(media_id):
+    return delete_supabase_analysis(media_id)
+
     if 'user_id' not in session:
         return "<script>alert('로그인이 필요한 서비스입니다.'); location.href='/login';</script>"
 
@@ -870,50 +1346,105 @@ def delete_media_file(media_id):
 
 @app.route('/analyze/list')
 def analyze_list():
-    user_id = session.get('user_id')
-    analysis_list_data = []
-    conn = Session.get_connection()
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    user_id = normalize_auth_user_id(session.get('user_id'))
+    if not user_id:
+        session.clear()
+        return redirect(url_for('login'))
+
     try:
-        with conn.cursor() as cursor:
-            sql = """
-                SELECT 
-                    m.id, m.stored_path, m.file_type, m.memo, m.uploaded_at,
-                    r.id AS analysis_id, r.status, r.result_json
-                FROM media_files m
-                LEFT JOIN analysis_results r ON m.id = r.media_id
-                WHERE m.member_id = %s
-                ORDER BY m.id DESC
-            """
-            cursor.execute(sql, (user_id,))
-            rows = cursor.fetchall()
-            # 이제 rows는 dict의 리스트이므로 그대로 사용
-            analysis_list_data = rows
-    finally:
-        conn.close()
-    return render_template('analyze_list.html', analyze_list=analysis_list_data)
+        admin = create_admin_client()
+        media_response = admin.table('media_files').select(
+            'id, storage_path, file_type, memo, uploaded_at'
+        ).eq('owner_id', user_id).order('uploaded_at', desc=True).execute()
+        media_rows = media_response.data or []
+        media_ids = [row['id'] for row in media_rows]
+        results_by_media = {}
+        if media_ids:
+            result_response = admin.table('analysis_results').select(
+                'id, media_id, status, result_json'
+            ).in_('media_id', media_ids).execute()
+            results_by_media = {
+                row['media_id']: row for row in (result_response.data or [])
+            }
+
+        analysis_list_data = []
+        storage = admin.storage.from_('analysis-media')
+        for row in media_rows:
+            result = results_by_media.get(row['id'], {})
+            signed = storage.create_signed_url(row['storage_path'], 3600)
+            media_url = (
+                signed.get('signedURL')
+                or signed.get('signedUrl')
+                or signed.get('signed_url')
+            )
+            analysis_list_data.append({
+                'id': row['id'],
+                'stored_path': row['storage_path'],
+                'media_url': media_url,
+                'file_type': row['file_type'],
+                'memo': row.get('memo'),
+                'uploaded_at': row.get('uploaded_at'),
+                'analysis_id': result.get('id'),
+                'status': result.get('status', 'PENDING'),
+                'result_json': result.get('result_json'),
+            })
+        return render_template(
+            'analyze_list.html',
+            analyze_list=analysis_list_data,
+        )
+    except Exception as exc:
+        app.logger.warning(
+            'Supabase analysis list failed: type=%s code=%s',
+            type(exc).__name__,
+            str(getattr(exc, 'code', '') or 'none'),
+        )
+        return render_template(
+            'analyze_list.html',
+            analyze_list=[],
+            analysis_error='분석 게시판 데이터베이스를 준비해야 합니다.',
+        )
 
 
 
 @app.route('/board/list')
 def board_list():
-    conn = Session.get_connection()
     try:
-        with conn.cursor() as cursor:
-            # 게시글 정보와 작성자 이름을 함께 JOIN하여 가져옴
-            sql = """
-                SELECT b.id, b.title, b.regdate, b.readcount, m.name as writer_name 
-                FROM boards b
-                JOIN members m ON b.member_id = m.id
-                ORDER BY b.id DESC
-            """
-            cursor.execute(sql)
-            rows = cursor.fetchall()
-            return render_template('board_list.html', boards=rows)
+        response = create_admin_client().table('inquiries').select(
+            'id, title, author_name, created_at, view_count'
+        ).order('created_at', desc=True).execute()
+        rows = [{
+            'id': row['id'],
+            'title': row['title'],
+            'writer_name': row.get('author_name') or 'SafeCar 사용자',
+            'regdate': row.get('created_at'),
+            'readcount': row.get('view_count', 0),
+        } for row in (response.data or [])]
+        return render_template('board_list.html', boards=rows)
+    except SupabaseConfigurationError:
+        app.logger.error(
+            'Supabase inquiry configuration is incomplete. '
+            'Required environment variables were not loaded.'
+        )
+        return render_template(
+            'board_list.html',
+            boards=[],
+            board_error='문의 게시판 연결 설정을 확인하고 있습니다.',
+        )
     except Exception as e:
-        print(f"게시판 목록 오류: {e}")
-        return "<script>alert('게시판 목록을 불러오는 중 오류가 발생했습니다.'); history.back();</script>"
-    finally:
-        conn.close()
+        app.logger.warning('Supabase inquiry list failed: %s', type(e).__name__)
+        error_code = str(getattr(e, 'code', '') or '')
+        message = (
+            '문의 게시판 테이블을 준비해야 합니다.'
+            if error_code == 'PGRST205'
+            else '문의 게시판 데이터를 불러오지 못했습니다.'
+        )
+        return render_template(
+            'board_list.html',
+            boards=[],
+            board_error=message,
+        )
 
 
 @app.route('/board/write', methods=['GET'])
@@ -928,79 +1459,125 @@ def board_write_pro():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    title = request.form.get('title')
-    content = request.form.get('content')
-    member_id = session['user_id']
-    
-    conn = Session.get_connection()
+    title = (request.form.get('title') or '').strip()
+    content = (request.form.get('content') or '').strip()
+    member_id = normalize_auth_user_id(session.get('user_id'))
+    if not member_id:
+        session.clear()
+        return redirect(url_for('login'))
+    if not title or not content:
+        return "<script>alert('제목과 내용을 모두 입력해 주세요.'); history.back();</script>"
+
     try:
-        with conn.cursor() as cursor:
-            sql = "INSERT INTO boards (member_id, title, content) VALUES (%s, %s, %s)"
-            cursor.execute(sql, (member_id, title, content))
-            conn.commit()
-            return redirect(url_for('board_list'))
+        admin_client = create_admin_client()
+        auth_user_response = admin_client.auth.admin.get_user_by_id(member_id)
+        auth_user = getattr(auth_user_response, 'user', None)
+        if not auth_user or str(auth_user.id) != member_id:
+            session.clear()
+            return (
+                "<script>alert('로그인 정보가 만료되었습니다. 다시 로그인해 주세요.'); "
+                "location.href='/login';</script>"
+            )
+
+        response = admin_client.table('inquiries').insert({
+            'author_id': member_id,
+            'author_name': (session.get('user_name') or 'SafeCar 사용자')[:80],
+            'title': title[:200],
+            'content': content[:10000],
+        }).execute()
+        if not response.data:
+            raise RuntimeError('Supabase inquiry insert returned no row')
+        return redirect(url_for('board_list'))
+    except SupabaseConfigurationError:
+        app.logger.error('Supabase inquiry write configuration is incomplete.')
+        return (
+            "<script>alert('문의 게시판 연결 설정이 없습니다. 서버를 다시 실행해 주세요.'); "
+            "history.back();</script>"
+        )
     except Exception as e:
-        conn.rollback()
-        print(f"게시글 작성 오류: {e}")
-        return "<script>alert('글을 저장하는 중 오류가 발생했습니다.'); history.back();</script>"
-    finally:
-        conn.close()
+        error_code = str(getattr(e, 'code', '') or '')
+        app.logger.warning(
+            'Supabase inquiry create failed: type=%s code=%s',
+            type(e).__name__,
+            error_code or 'none',
+        )
+        if error_code == '23503':
+            session.clear()
+            message = '로그인 계정을 확인할 수 없습니다. 다시 로그인해 주세요.'
+            destination = "location.href='/login';"
+        elif error_code in {'42501', 'PGRST301'}:
+            message = '문의 게시판 저장 권한 설정을 확인해 주세요.'
+            destination = 'history.back();'
+        elif error_code in {'23514', '23502', '22001'}:
+            message = '제목 또는 내용의 입력값을 확인해 주세요.'
+            destination = 'history.back();'
+        else:
+            message = '문의글을 저장하지 못했습니다. 다시 로그인한 뒤 시도해 주세요.'
+            destination = 'history.back();'
+        return f"<script>alert('{message}'); {destination}</script>"
 
 
-@app.route('/board/view/<int:board_id>')
+@app.route('/board/view/<board_id>')
 def board_view(board_id):
-    conn = Session.get_connection()
+    board_id = normalize_auth_user_id(board_id)
+    if not board_id:
+        return "<script>alert('존재하지 않는 문의글입니다.'); location.href='/board/list';</script>"
     try:
-        with conn.cursor() as cursor:
-            # 조회수 증가
-            update_sql = "UPDATE boards SET readcount = readcount + 1 WHERE id = %s"
-            cursor.execute(update_sql, (board_id,))
-            conn.commit()
-            
-            # 게시글 상세 내용 가져오기
-            select_sql = """
-                SELECT b.*, m.name as writer_name 
-                FROM boards b
-                JOIN members m ON b.member_id = m.id
-                WHERE b.id = %s
-            """
-            cursor.execute(select_sql, (board_id,))
-            board = cursor.fetchone()
-            
-            if board:
-                return render_template('board_view.html', board=board, comments=[])
-            else:
-                return "<script>alert('존재하지 않는 게시글입니다.'); location.href='/board/list';</script>"
+        client = create_admin_client()
+        response = client.table('inquiries').select(
+            'id, author_id, author_name, title, content, created_at, view_count'
+        ).eq('id', board_id).limit(1).execute()
+        if not response.data:
+            return "<script>alert('존재하지 않는 문의글입니다.'); location.href='/board/list';</script>"
+        row = response.data[0]
+        next_count = int(row.get('view_count') or 0) + 1
+        client.table('inquiries').update({
+            'view_count': next_count,
+        }).eq('id', board_id).execute()
+        board = {
+            'id': row['id'],
+            'member_id': row['author_id'],
+            'writer_name': row.get('author_name') or 'SafeCar 사용자',
+            'title': row['title'],
+            'content': row['content'],
+            'regdate': row.get('created_at'),
+            'readcount': next_count,
+        }
+        return render_template('board_view.html', board=board, comments=[])
     except Exception as e:
-        print(f"게시글 조회 오류: {e}")
-        return "<script>alert('글을 불러오는 중 오류가 발생했습니다.'); history.back();</script>"
-    finally:
-        conn.close()
+        app.logger.warning('Supabase inquiry detail failed: %s', type(e).__name__)
+        return "<script>alert('문의글을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); history.back();</script>"
 
 
-@app.route('/board/edit/<int:board_id>')
+@app.route('/board/edit/<board_id>')
 def board_edit(board_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
-    conn = Session.get_connection()
+    board_id = normalize_auth_user_id(board_id)
+    current_user_id = normalize_auth_user_id(session.get('user_id'))
+    if not board_id or not current_user_id:
+        return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
     try:
-        with conn.cursor() as cursor:
-            sql = "SELECT * FROM boards WHERE id = %s"
-            cursor.execute(sql, (board_id,))
-            board = cursor.fetchone()
-            
-            if not board:
-                return "<script>alert('게시글을 찾을 수 없습니다.'); location.href='/board/list';</script>"
-                
-            is_owner = board['member_id'] == session['user_id']
-            is_admin = session.get('user_role') == 'admin'
-            if not is_owner and not is_admin:
-                return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
-
-            return render_template('board_edit.html', board=board)
-    finally:
-        conn.close()
+        response = create_admin_client().table('inquiries').select(
+            'id, author_id, title, content'
+        ).eq('id', board_id).limit(1).execute()
+        if not response.data:
+            return "<script>alert('문의글을 찾을 수 없습니다.'); location.href='/board/list';</script>"
+        row = response.data[0]
+        is_owner = str(row['author_id']) == current_user_id
+        is_admin = session.get('user_role') == 'admin'
+        if not is_owner and not is_admin:
+            return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
+        board = {
+            'id': row['id'],
+            'member_id': row['author_id'],
+            'title': row['title'],
+            'content': row['content'],
+        }
+        return render_template('board_edit.html', board=board)
+    except Exception as e:
+        app.logger.warning('Supabase inquiry edit load failed: %s', type(e).__name__)
+        return "<script>alert('문의글을 불러오지 못했습니다.'); history.back();</script>"
 
 
 @app.route('/board/edit_pro', methods=['POST'])
@@ -1008,60 +1585,57 @@ def board_edit_pro():
     if 'user_id' not in session:
         return redirect(url_for('login'))
         
-    board_id = request.form.get('id')
-    title = request.form.get('title')
-    content = request.form.get('content')
-    
-    conn = Session.get_connection()
+    board_id = normalize_auth_user_id(request.form.get('id'))
+    current_user_id = normalize_auth_user_id(session.get('user_id'))
+    title = (request.form.get('title') or '').strip()
+    content = (request.form.get('content') or '').strip()
+    if not board_id or not current_user_id:
+        return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
+    if not title or not content:
+        return "<script>alert('제목과 내용을 모두 입력해 주세요.'); history.back();</script>"
     try:
-        with conn.cursor() as cursor:
-            # 작성자 본인인지 2차 확인
-            cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
-            board = cursor.fetchone()
-            
-            is_owner = board and board['member_id'] == session['user_id']
-            is_admin = session.get('user_role') == 'admin'
-            if not board or (not is_owner and not is_admin):
-                return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
-
-            sql = "UPDATE boards SET title = %s, content = %s WHERE id = %s"
-            cursor.execute(sql, (title, content, board_id))
-            conn.commit()
-            
-            return f"<script>alert('정상적으로 수정되었습니다.'); location.href='/board/view/{board_id}';</script>"
+        client = create_admin_client()
+        response = client.table('inquiries').select('author_id').eq(
+            'id', board_id
+        ).limit(1).execute()
+        row = response.data[0] if response.data else None
+        is_owner = row and str(row['author_id']) == current_user_id
+        is_admin = session.get('user_role') == 'admin'
+        if not row or (not is_owner and not is_admin):
+            return "<script>alert('수정 권한이 없습니다.'); history.back();</script>"
+        client.table('inquiries').update({
+            'title': title[:200],
+            'content': content[:10000],
+        }).eq('id', board_id).execute()
+        return f"<script>alert('정상적으로 수정되었습니다.'); location.href='/board/view/{board_id}';</script>"
     except Exception as e:
-        conn.rollback()
-        print(f"게시글 수정 오류: {e}")
+        app.logger.warning('Supabase inquiry update failed: %s', type(e).__name__)
         return "<script>alert('수정 중 오류가 발생했습니다.'); history.back();</script>"
-    finally:
-        conn.close()
 
 
-@app.route('/board/delete/<int:board_id>')
+@app.route('/board/delete/<board_id>')
 def board_delete(board_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
-    conn = Session.get_connection()
+    board_id = normalize_auth_user_id(board_id)
+    current_user_id = normalize_auth_user_id(session.get('user_id'))
+    if not board_id or not current_user_id:
+        return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
     try:
-        with conn.cursor() as cursor:
-            # 권한 체크
-            cursor.execute("SELECT member_id FROM boards WHERE id = %s", (board_id,))
-            board = cursor.fetchone()
-            
-            if not board or board['member_id'] != session['user_id']:
-                return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
-                
-            cursor.execute("DELETE FROM boards WHERE id = %s", (board_id,))
-            conn.commit()
-            
-            return "<script>alert('게시글이 삭제되었습니다.'); location.href='/board/list';</script>"
+        client = create_admin_client()
+        response = client.table('inquiries').select('author_id').eq(
+            'id', board_id
+        ).limit(1).execute()
+        row = response.data[0] if response.data else None
+        if not row or str(row['author_id']) != current_user_id:
+            return "<script>alert('삭제 권한이 없습니다.'); history.back();</script>"
+        client.table('inquiries').delete().eq('id', board_id).eq(
+            'author_id', current_user_id
+        ).execute()
+        return "<script>alert('문의글을 삭제했습니다.'); location.href='/board/list';</script>"
     except Exception as e:
-        conn.rollback()
-        print(f"게시글 삭제 오류: {e}")
+        app.logger.warning('Supabase inquiry delete failed: %s', type(e).__name__)
         return "<script>alert('삭제 중 오류가 발생했습니다.'); history.back();</script>"
-    finally:
-        conn.close()
 
 
 # ===============================================

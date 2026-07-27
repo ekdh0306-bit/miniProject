@@ -76,10 +76,9 @@
                 계정을 삭제하시겠습니까? 탈퇴 시 모든 정보가 삭제됩니다.
             </p>
 
-            <a href="/member/delete/{{ session.get('user_id') }}"
+            <a href="/member/delete"
                class="btn-delete"
-               style="display: inline-block; width: auto; min-width: 150px;"
-               onclick="return confirm('정말 탈퇴하시겠습니까?');">
+               style="display: inline-block; width: auto; min-width: 150px;">
                 회원 탈퇴
             </a>
         </div>
